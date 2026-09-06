@@ -98,7 +98,7 @@ export class Soil {
   private pendingAge = new Uint16Array(SOIL.capacity);
   private still = new Uint16Array(SOIL.capacity);
   private born = new Uint8Array(SOIL.capacity);
-  /** Set when a clod touched anything this substep; only resting clods get settling damping. */
+  /** Contact this substep; used to prevent unsupported particles from sleeping. */
   private touching = new Uint8Array(SOIL.capacity);
   /** Frames a loose clod has spent slow and on the ground; soil that lands stays put. */
   private settle = new Uint8Array(SOIL.capacity);
@@ -525,7 +525,7 @@ export class Soil {
   private integrate(h: number) {
     const { px, py, pz, ppx, ppy, ppz, vx, vy, vz, awake, touching } = this;
     const g = SOIL.gravity * h,
-      slow = (SOIL.sleepSpeed * 4) ** 2;
+      drag = Math.pow(0.998, h * 300);
     for (let k = 0; k < this.activeCount; k++) {
       const i = this.active[k];
       if (!awake[i]) continue;
@@ -533,14 +533,13 @@ export class Soil {
       ppy[i] = py[i];
       ppz[i] = pz[i];
       vy[i] -= g;
-      // Free-falling clods keep their speed; slow clods in contact settle quickly.
-      let s = 0.998;
-      if (touching[i] && vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i] < slow)
-        s = 0.9;
+      // Pair friction damps relative motion. Damping world velocity on any
+      // contact also brakes a falling cluster, making whole loads hover.
+      // Keep only mild air drag, scaled by elapsed time rather than refresh rate.
       touching[i] = 0;
-      vx[i] *= s;
-      vy[i] *= s;
-      vz[i] *= s;
+      vx[i] *= drag;
+      vy[i] *= drag;
+      vz[i] *= drag;
       px[i] += vx[i] * h;
       py[i] += vy[i] * h;
       pz[i] += vz[i] * h;

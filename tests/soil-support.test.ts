@@ -39,6 +39,50 @@ function step(sim: Simulation, frames: number) {
   for (let i = 0; i < frames; i++) sim.update(neutral(), 1 / 60);
 }
 
+for (const fps of [30, 60, 144, 240]) {
+  test(`a detached 800-clod load falls under gravity at ${fps} Hz`, () => {
+    const sim = new Simulation();
+    // A packed load left hanging beside the bucket, including sleeping saves.
+    for (let x = 0; x < 10; x++)
+      for (let y = 0; y < 8; y++)
+        for (let z = 0; z < 10; z++)
+          sim.falling.push({
+            x: 3 + x * R * 2,
+            y: 2 + y * R * 2,
+            z: 3 + z * R * 2,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            volume: CLOD_VOLUME,
+            asleep: true,
+          });
+    const start = sim.falling.reduce((sum, p) => sum + p.y, 0) / 800;
+    // Nothing has reached the ground yet: contacts must preserve the common fall.
+    for (let i = 0; i < fps / 2; i++) sim.update(neutral(), 1 / fps);
+    const height =
+      sim.falling.reduce((sum, p) => sum + p.y, 0) / sim.falling.length;
+    // Import/wake and overlap stabilization take at most two display frames.
+    const minimumDrop = 0.5 * 9.81 * (0.5 - 2 / fps) ** 2 * 0.85;
+    assert.ok(
+      start - height > minimumDrop,
+      `load fell only ${start - height} m in half a second`,
+    );
+    for (let i = 0; i < fps * 2; i++) sim.update(neutral(), 1 / fps);
+    assert.ok(
+      sim.falling.length < 10,
+      `${sim.falling.length} clods have not landed`,
+    );
+    const volume =
+      sim.ground.reduce((sum, h) => sum + h * 0.25 ** 2, 0) +
+      sim.falling.reduce((sum, p) => sum + p.volume, 0) +
+      sim.machine.load;
+    assert.ok(
+      Math.abs(volume - 800 * CLOD_VOLUME) < 1e-6,
+      "landing conserves soil",
+    );
+  });
+}
+
 test("saved sleeping dirt inside the bucket falls until steel actually supports it", () => {
   const sim = raisedBucket();
   const clod = carried(sim, floorV(0.3) + 0.3);
