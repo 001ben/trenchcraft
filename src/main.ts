@@ -77,6 +77,7 @@ function pause() {
   running = false;
   resumeOnFocus = false;
   input.clear();
+  sim.resetRates();
   save();
   $<HTMLSelectElement>("pattern").value = sim.pattern;
   $("reset-confirm").hidden = true;
@@ -165,6 +166,7 @@ function suspend() {
   running = false;
   resumeOnFocus = true;
   input.clear();
+  sim.resetRates();
   save();
 }
 function resume() {

@@ -17,13 +17,13 @@ import {
 import type { Machine, SoilClod } from "./simulation";
 
 /** Bank volume one nominal clod stands for. */
-export const CLOD_VOLUME = 6e-4;
+export const CLOD_VOLUME = 2.5e-4;
 /** Loose soil swells; in the bowl it packs to about 58% of its excavated bulk. */
 export const CLOD_RADIUS = Math.cbrt(
   (0.58 * 0.6 * CLOD_VOLUME * 3) / (4 * Math.PI),
 );
 export const SOIL = {
-  capacity: 2600,
+  capacity: 6000,
   substeps: 5,
   gravity: 9.81,
   soilStatic: 0.7,
@@ -32,19 +32,19 @@ export const SOIL = {
   steelKinetic: 0.4,
   groundStatic: 1.0,
   groundKinetic: 0.85,
-  cohesion: 0.1,
-  cohesionRange: 0.5,
+  cohesion: 0.04,
+  cohesionRange: 0.35,
   sleepSpeed: 0.1,
   sleepFrames: 14,
   /** A loose clod this slow and on the ground for settleFrames becomes ground. */
   settleSpeed: 0.8,
   settleFrames: 2,
   /** Closing speed above which clod-on-clod impacts stick instead of scattering. */
-  stickSpeed: 1.2,
+  stickSpeed: 1.8,
   wakeDepth: 0.15,
   maxSpeed: 7,
   absorbTolerance: 0.7,
-  absorbPerFrame: 40,
+  absorbPerFrame: 120,
   /** Released volume per second once the mouth faces down. */
   tipRate: 0.4,
 };
@@ -183,11 +183,29 @@ export class Soil {
     this.free[this.freeCount++] = i;
     this.pairsDirty = true;
   }
+  private wakeStack = new Int32Array(SOIL.capacity);
+  /** Wake a clod and everything sleeping on top of it, so nothing is left hanging. */
   private wake(i: number) {
     if (this.awake[i] || !this.alive[i]) return;
     this.awake[i] = 1;
     this.still[i] = 0;
     this.pairsDirty = true;
+    const stack = this.wakeStack,
+      lift = 0.3 * this.r,
+      reach = 2.3 * this.r;
+    let top = 0;
+    stack[top++] = i;
+    while (top > 0) {
+      const j = stack[--top],
+        y = this.py[j];
+      this.forNeighbours(this.px[j], y, this.pz[j], reach, (k) => {
+        if (this.awake[k] || this.py[k] <= y + lift || top >= stack.length)
+          return;
+        this.awake[k] = 1;
+        this.still[k] = 0;
+        stack[top++] = k;
+      });
+    }
   }
   private sleep(i: number) {
     this.awake[i] = 0;

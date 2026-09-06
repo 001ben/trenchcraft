@@ -179,6 +179,12 @@ export class Simulation {
   soil = new Soil(this);
   private dischargeIndex = 0;
   private spawnIndex = 0;
+  /** Smoothed joint rates, in stick units, for hydraulic ramping. */
+  private rates = { swing: 0, boom: 0, stick: 0, curl: 0 };
+  /** Drop any ramped motion, for pauses and cleared inputs. */
+  resetRates() {
+    this.rates.swing = this.rates.boom = this.rates.stick = this.rates.curl = 0;
+  }
   resistance = 0;
   cuts: ScoopCut[] = [];
   cutRate = 0;
@@ -395,7 +401,12 @@ export class Simulation {
   /** Cut earth enters the bowl over the lip as clods; tiny bites top up the last clod. */
   private capture(volume: number, parcels: ScoopCut[]) {
     const last = this.held[this.held.length - 1];
-    if (volume < 0.5 * CLOD_VOLUME && last && last.volume < 1.6 * CLOD_VOLUME) {
+    if (
+      last &&
+      ((volume < 0.5 * CLOD_VOLUME && last.volume < 1.6 * CLOD_VOLUME) ||
+        // Near the solver's pool limit, grow existing clods rather than lose volume.
+        this.held.length + this.falling.length > SOIL.capacity - 100)
+    ) {
       last.volume += volume;
       return;
     }
@@ -444,16 +455,18 @@ export class Simulation {
     const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
     let released = 0,
       count = 0;
-    // A stream cannot leave the mouth faster than gravity clears it: a couple of
-    // whole clods per frame keeps successive batches from overlapping in the air.
-    while (this.held.length && released < requested - 1e-9 && count++ < 2) {
+    while (this.held.length && released < requested - 1e-9) {
       const clod = this.held.pop()!;
-      // Scatter across the cutting lip instead of emitting one solid column.
-      const across =
-        (((this.dischargeIndex++ * 0.61803398875) % 1) - 0.5) * 0.56;
-      clod.x = point.x + right.x * across;
-      clod.y = point.y;
-      clod.z = point.z + right.z * across;
+      // Scatter over a small disc under the mouth so the clods released in one
+      // frame do not start inside each other.
+      const k = this.dischargeIndex++,
+        angle = k * 2.39996323,
+        radius = 0.3 * Math.sqrt((k * 0.61803398875) % 1),
+        across = Math.cos(angle) * radius,
+        along = Math.sin(angle) * radius;
+      clod.x = point.x + right.x * across - right.z * along;
+      clod.y = point.y + Math.floor(count++ / 12) * this.soil.r * 2.2;
+      clod.z = point.z + right.z * across + right.x * along;
       clod.vx = opening.x * 0.2 + right.x * across * 0.4;
       clod.vy = -1.0;
       clod.vz = opening.z * 0.2 + right.z * across * 0.4;
@@ -496,10 +509,16 @@ export class Simulation {
     const kept: SoilClod[] = [];
     for (const [k, clod] of this.held.entries()) {
       if (loose.has(k)) {
+        // Uneven shoves break the load into a stream instead of one falling brick.
+        const s = this.spawnIndex++,
+          push = 0.7 + ((s * 0.3247179572) % 1) * 0.9,
+          jx = (((s * 0.61803398875) % 1) - 0.5) * 0.9,
+          jy = (((s * 0.7548776662) % 1) - 0.5) * 0.6,
+          jz = (((s * 0.5698402909) % 1) - 0.5) * 0.9;
         clod.asleep = false;
-        clod.vx += nx * 1.2;
-        clod.vy += ny * 1.2 + 0.4;
-        clod.vz += nz * 1.2;
+        clod.vx += nx * push + jx;
+        clod.vy += ny * push + 0.3 + jy;
+        clod.vz += nz * push + jz;
         this.falling.push(clod);
       } else kept.push(clod);
     }
@@ -571,19 +590,31 @@ export class Simulation {
         (Math.abs(a.boom) + Math.abs(a.stick) + Math.abs(a.curl)) * 0.65,
       );
     const biteFlow = flow * (1 - previousResistance * 0.28);
-    m.swing += a.swing * dt * 0.6;
+    // Hydraulic response: rates ramp toward the stick command so a carried load
+    // is not jolted off the bucket; releasing a stick still stops quickly.
+    const ramp = (current: number, target: number, up: number, down: number) =>
+      current +
+      (target - current) *
+        (1 -
+          Math.exp(-dt / (Math.abs(target) > Math.abs(current) ? up : down)));
+    const r = this.rates;
+    r.swing = ramp(r.swing, a.swing, 0.4, 0.12);
+    r.boom = ramp(r.boom, a.boom, 0.22, 0.1);
+    r.stick = ramp(r.stick, a.stick, 0.22, 0.1);
+    r.curl = ramp(r.curl, a.curl, 0.18, 0.1);
+    m.swing += r.swing * dt * 0.6;
     m.boom = clamp(
-      m.boom + a.boom * dt * 0.4 * flow * (1 - (m.load / CAPACITY) * 0.15),
+      m.boom + r.boom * dt * 0.4 * flow * (1 - (m.load / CAPACITY) * 0.15),
       -0.12,
       1.3,
     );
     m.stick = clamp(
-      m.stick + a.stick * dt * 0.55 * (a.stick < 0 ? biteFlow : flow),
+      m.stick + r.stick * dt * 0.55 * (a.stick < 0 ? biteFlow : flow),
       -2.55,
       -0.3,
     );
     m.bucket = clamp(
-      m.bucket + a.curl * dt * 0.95 * (a.curl > 0 ? biteFlow : flow),
+      m.bucket + r.curl * dt * 0.95 * (a.curl > 0 ? biteFlow : flow),
       -1.2,
       1.7,
     );

@@ -97,8 +97,16 @@ try {
     200,
     [1.6, 0.4, -0.9, 0, -0.5, 0.2],
   );
-  assert.ok(opening.loose > 0 || opening.load < swung.load, "tipping releases earth");
-  const settled = await phase("settled", {}, 240, [2.2, -0.2, -1.4, 0, -2.2, 0]);
+  assert.ok(
+    opening.loose > 0 || opening.load < swung.load,
+    "tipping releases earth",
+  );
+  const settled = await phase(
+    "settled",
+    {},
+    240,
+    [2.2, -0.2, -1.4, 0, -2.2, 0],
+  );
   assert.ok(settled.load < 0.002, `bucket still holds ${settled.load}`);
   assert.ok(settled.loose < 6, `${settled.loose} clods never settled`);
   assert.ok(settled.ground > 0.05, "no spoil pile formed on the ground");

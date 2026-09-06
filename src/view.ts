@@ -423,8 +423,14 @@ export class View {
         const seed = this.seedOf(p);
         this.temp.position.set(p.x, p.y, p.z);
         this.temp.rotation.set(seed * 6.28, seed * 40, seed * 17);
-        const size = CLOD_RADIUS * 1.5 * Math.cbrt(p.volume / CLOD_VOLUME);
-        this.temp.scale.set(size * (0.9 + seed * 0.2), size * 0.9, size);
+        const size = CLOD_RADIUS * 1.3 * Math.cbrt(p.volume / CLOD_VOLUME),
+          s2 = (seed * 7.31) % 1,
+          s3 = (seed * 3.7) % 1;
+        this.temp.scale.set(
+          size * (0.8 + seed * 0.45),
+          size * (0.7 + s2 * 0.4),
+          size * (0.8 + s3 * 0.45),
+        );
         this.temp.updateMatrix();
         this.clods.setMatrixAt(count++, this.temp.matrix);
       }
