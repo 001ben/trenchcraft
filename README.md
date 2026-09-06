@@ -69,6 +69,8 @@ Backfilling reduces progress. Re-digging the same cells cannot erase earlier off
 | `tools/model-check.mjs`            | Render/simulation joint agreement and a small timing sample                                          |
 | `tools/bucket-check.mjs`           | Empty/partial/full scoop and falling-soil close-ups; track animation direction checks                |
 
+The reference-guided visual pass and its source photographs are documented in [art/REFERENCES.md](art/REFERENCES.md). The body, canopy, tapered boom, hoses, track details and animated bucket rocker follow those references while retaining the established digging reach.
+
 Rebuild the model with Blender 5:
 
 ```powershell

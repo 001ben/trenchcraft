@@ -15,7 +15,8 @@ try {
   await page.waitForFunction(() => window.review);
   const result = await page.evaluate(async () => {
     const { sim, view, tooth, THREE } = window.review;
-    let error = 0;
+    let error = 0,
+      linkError = 0;
     const timings = [];
     for (let i = 0; i < 90; i++) {
       sim.machine.heading = i * 0.01;
@@ -27,6 +28,11 @@ try {
       const start = performance.now();
       sim.update({ lx: 0, ly: 0, rx: 0, ry: 0, travel: false }, 1 / 60);
       view.render(1 / 60, i / 60);
+      for (const [j, arm] of view.hydraulics.arms.entries())
+        linkError = Math.max(
+          linkError,
+          Math.abs(arm.scale.y - (j % 2 ? 0.36 : 0.4)),
+        );
       timings.push(performance.now() - start);
       const visual = view.model
         .getObjectByName("Bucket")
@@ -56,6 +62,7 @@ try {
     return {
       turf: { intact, cut, backfillBare },
       maxToothError: error,
+      maxLinkError: linkError,
       p95: timings[Math.floor(timings.length * 0.95)],
       drawCalls: view.renderer.info.render.calls,
       triangles: view.renderer.info.render.triangles,
@@ -72,6 +79,31 @@ try {
     "rendered bucket must match simulation kinematics",
   );
   assert.ok(result.drawCalls < 240, "bounded draw calls");
+  assert.ok(
+    result.maxLinkError < 0.00001,
+    "bucket rocker links retain their length through articulated poses",
+  );
+  for (const [name, eye] of [
+    ["side", [9, 3.2, -1.4]],
+    ["front", [6, 4, -7]],
+  ]) {
+    await page.evaluate((eye) => {
+      const { sim, view } = window.review;
+      Object.assign(sim.machine, {
+        heading: 0,
+        swing: 0,
+        boom: 0.58,
+        stick: -1.5,
+        bucket: 0.15,
+        load: 0,
+      });
+      view.render(0, 0);
+      view.camera.position.set(...eye);
+      view.camera.lookAt(0, 1.4, -1.4);
+      view.renderer.render(view.scene, view.camera);
+    }, eye);
+    await page.screenshot({ path: `.local/excavator-${name}.png` });
+  }
 } finally {
   await browser.close();
 }

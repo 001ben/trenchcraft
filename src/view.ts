@@ -197,7 +197,7 @@ export class View {
     this.label("SERVICE TRENCH", 0, 0.04, -8.7, 2.5);
     this.label("SPOIL HERE", 3.75, 0.04, -9.2, 2.1);
     this.track = new T.InstancedMesh(
-      new T.BoxGeometry(0.58, 0.08, 0.17),
+      new T.BoxGeometry(0.46, 0.07, 0.14),
       material(0x263d37),
       72,
     );
@@ -380,13 +380,13 @@ export class View {
           (m.x - travel.x) * -Math.sin(m.heading) +
           (m.z - travel.z) * -Math.cos(m.heading),
         turn = m.heading - this.lastHeading;
-      this.trackPhase[0] -= distance - turn * 0.89;
-      this.trackPhase[1] -= distance + turn * 0.89;
+      this.trackPhase[0] -= distance - turn * 0.79;
+      this.trackPhase[1] -= distance + turn * 0.79;
     }
     this.lastHeading = m.heading;
     this.model.userData.lastPosition = new T.Vector3(m.x, 0, m.z);
-    const straight = 1.9,
-      r = 0.38,
+    const straight = 1.6,
+      r = 0.32,
       length = 2 * straight + 2 * Math.PI * r;
     for (let side = 0; side < 2; side++)
       for (let i = 0; i < 36; i++) {
@@ -396,22 +396,22 @@ export class View {
         let z: number, y: number, a: number;
         if (q < straight) {
           z = -straight / 2 + q;
-          y = 0.4 + r;
+          y = 0.34 + r;
           a = 0;
         } else if (q < straight + Math.PI * r) {
           a = (q - straight) / r;
           z = straight / 2 + r * Math.sin(a);
-          y = 0.4 + r * Math.cos(a);
+          y = 0.34 + r * Math.cos(a);
         } else if (q < 2 * straight + Math.PI * r) {
           z = straight / 2 - (q - straight - Math.PI * r);
-          y = 0.4 - r;
+          y = 0.34 - r;
           a = Math.PI;
         } else {
           a = (q - 2 * straight - Math.PI * r) / r + Math.PI;
           z = -straight / 2 + r * Math.sin(a);
-          y = 0.4 + r * Math.cos(a);
+          y = 0.34 + r * Math.cos(a);
         }
-        this.temp.position.set(side ? 0.89 : -0.89, y, z);
+        this.temp.position.set(side ? 0.79 : -0.79, y, z);
         this.temp.rotation.set(a, 0, 0);
         this.temp.scale.set(1, 1, 1);
         this.temp.updateMatrix();
@@ -477,15 +477,15 @@ export class View {
       eye.set(11, 18, 15);
       look.set(0, 0, -2);
     } else if (this.cab) {
-      eye.addScaledVector(right, -0.63).addScaledVector(f, 0.3);
-      eye.y = 2.02;
+      eye.addScaledVector(right, -0.44).addScaledVector(f, 0.3);
+      eye.y = 2.17;
       look.copy(eye).addScaledVector(f, 7);
       look.y = 0.5;
     } else {
       eye
-        .addScaledVector(f, -(innerWidth < 600 ? 12.5 : 9))
-        .addScaledVector(right, innerWidth < 600 ? 1.4 : 3.7);
-      eye.y = innerWidth < 600 ? 8.2 : 7;
+        .addScaledVector(f, -(innerWidth < 600 ? 10.5 : 9))
+        .addScaledVector(right, innerWidth < 600 ? 4.8 : 3.7);
+      eye.y = innerWidth < 600 ? 10 : 7;
       look.addScaledVector(f, 2.6);
       look.y = 0.1;
     }
