@@ -9,14 +9,14 @@ The user wants a relaxed learning game for someone becoming familiar with a mini
 - One clearly marked trench and one spoil strip. Score depth progress, off-line cuts and tidy placement using ground state.
 - Keep the bucket finite. Lift before discharge; move the upper carriage independently from the tracks.
 - Author the machine in Blender and keep its pivots explicit. Verify the rendered cutting point against the simulation.
-- Use one instanced soil mesh, bounded particles and a capped render pixel ratio. Avoid thousands of awake rigid bodies.
+- Use one instanced soil mesh, a bounded clod solver that sleeps settled earth and returns it to the grid, and a capped render pixel ratio. Avoid thousands of awake rigid bodies.
 - Keep the project independent of GILT; borrow lessons about verification and interaction, not its game loop or vehicles.
 
 ## Next passes, after a playtest
 
 1. **Watch a novice and an operator play.** Verify the pattern against the intended real mini excavator. Record confusion about left/right, arm versus boom, camera depth and travel direction. Tune stick sensitivity and add a slower practice setting from that evidence.
 2. **Teach one motion at a time.** A short sequence of reach markers, scoop targets and spoil targets should precede the full trench. Keep labels visible until the player chooses to hide them. Show a brief end-of-job card with a trench cross-section and where the cut wandered.
-3. **Refine contact from operator feedback.** The current pass corrects the backhoe bucket orientation, resists downward penetration into uncut soil, shares attachment speed, shows a growing bucket load and transfers discharged clods under gravity. Cylinder visuals now follow moving endpoints. Next, evaluate side-wall/full-shell contact, cutting consistency and a more detailed hydraulic linkage before adding complexity.
+3. **Refine contact from operator feedback.** Soil is now physical: clods with friction and cohesion, a bucket shell that carries and releases them, and settled earth returned to the grid. Next, measure the clod budget on real phones, let the bank crumble into clods ahead of the teeth instead of entering over the lip, and give clods contact with the machine body and tracks.
 4. **Make terrain more expressive.** Smoother walls, better cut faces and modest mound slumping without losing the bounded simulation or volume conservation. Add a grade/depth reference next to the bucket and checkpoints along the line.
 5. **More plumbing-themed practice plots.** Short straight runs, bends, narrow access and different depths on fictional cleared ground. Keep the exercises distinct from real underground-service work.
 

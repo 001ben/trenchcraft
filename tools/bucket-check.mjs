@@ -54,7 +54,9 @@ try {
       hasPile: sim.ground.some((h) => h > 0),
     };
   });
-  assert.ok(result.falling > 0 && result.load > 0);
+  // An inverted bowl lets its clods go at once; they are still in the air here.
+  assert.ok(result.falling > 0);
+  assert.ok(result.load >= 0 && result.load < 0.22);
   assert.equal(result.hasPile, false);
   await page.screenshot({ path: ".local/bucket-discharging.png" });
   const tracks = await page.evaluate(() => {

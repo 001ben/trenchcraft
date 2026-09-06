@@ -1,22 +1,35 @@
 import * as T from "three";
-import {
-  BucketLoad,
-  SOIL_COLS as COLS,
-  SOIL_ROWS as ROWS,
-  SOIL_WIDTH as WIDTH,
-  SOIL_LENGTH as LENGTH,
-  bucketFloor,
-} from "./bucket-load";
-import { ARM, Simulation, type ScoopCut } from "./simulation";
+import { HALF_WIDTH, floorV, makeFrame, toLocal } from "./bucket-shell";
+import { CLOD_RADIUS } from "./soil";
+import { frameOf, Simulation, type ScoopCut } from "./simulation";
 
-/** One deforming bed and a short contact strip join the cut bank to the bucket lip. */
+export const SOIL_COLS = 9,
+  SOIL_ROWS = 12,
+  SOIL_WIDTH = HALF_WIDTH * 2 - 0.02,
+  SOIL_LENGTH = 0.68,
+  SOIL_BACK = -0.08;
+const COLS = SOIL_COLS,
+  ROWS = SOIL_ROWS,
+  WIDTH = SOIL_WIDTH,
+  LENGTH = SOIL_LENGTH,
+  AREA = (WIDTH * LENGTH) / (COLS * ROWS);
+export const bucketFloor = floorV;
+
+/**
+ * A continuous soil skin over the clods carried in the bowl, plus a short
+ * contact strip joining the cut bank to the lip. Heights come straight from
+ * the physical clods, so the skin follows what is actually carried.
+ */
 export class BucketSoil extends T.Group {
-  bed = new BucketLoad();
+  /** Presentation bed: per-cell amounts derived from clod tops, and the carried volume. */
+  bed = { amounts: new Float64Array(COLS * ROWS), volume: 0 };
   private surface: T.Mesh<T.BufferGeometry, T.MeshStandardMaterial>;
   private sides: T.Mesh<T.BufferGeometry, T.MeshStandardMaterial>;
-  private intake: T.Mesh<T.BufferGeometry, T.MeshStandardMaterial>;
+  intake: T.Mesh<T.BufferGeometry, T.MeshStandardMaterial>;
   private heights = new Float32Array((COLS + 1) * (ROWS + 1));
   private point = new T.Vector3();
+  private frame = makeFrame();
+  private local = new Float64Array(3);
   constructor(texture: T.Texture | null) {
     super();
     const material = new T.MeshStandardMaterial({
@@ -81,19 +94,60 @@ export class BucketSoil extends T.Group {
     geo.setIndex(indices);
     return geo;
   }
+  /** Cell amounts from the highest clod over each cell, in the bed's packed units. */
+  private measure(sim: Simulation) {
+    const amounts = this.bed.amounts;
+    amounts.fill(0);
+    frameOf(sim.machine, this.frame);
+    const cap = CLOD_RADIUS * 0.85;
+    let volume = 0;
+    for (const clod of sim.held) {
+      volume += clod.volume;
+      toLocal(this.frame, clod.x, clod.y, clod.z, this.local);
+      const col = Math.floor(((this.local[0] + WIDTH / 2) / WIDTH) * COLS),
+        row = Math.floor(((this.local[2] - SOIL_BACK) / LENGTH) * ROWS);
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) continue;
+      const i = row * COLS + col,
+        top =
+          this.local[1] +
+          cap -
+          floorV(SOIL_BACK + ((row + 0.5) * LENGTH) / ROWS);
+      if (top <= 0) continue;
+      const amount = (top * AREA) / 0.58;
+      if (amount > amounts[i]) amounts[i] = amount;
+    }
+    // Fill single-cell holes so the skin reads as one heap, not a checkerboard.
+    for (let row = 0; row < ROWS; row++)
+      for (let col = 0; col < COLS; col++) {
+        const i = row * COLS + col;
+        if (amounts[i] > 0) continue;
+        let n = 0,
+          sum = 0;
+        for (const j of [i - 1, i + 1, i - COLS, i + COLS]) {
+          if (j < 0 || j >= amounts.length) continue;
+          if ((j === i - 1 && col === 0) || (j === i + 1 && col === COLS - 1))
+            continue;
+          if (amounts[j] > 0) {
+            n++;
+            sum += amounts[j];
+          }
+        }
+        if (n >= 3) amounts[i] = (sum / n) * 0.7;
+      }
+    this.bed.volume = volume;
+  }
   update(sim: Simulation, dt: number) {
-    const cuts = sim.cuts.splice(0),
-      m = sim.machine;
-    const angle = m.boom + m.stick + ARM.bucketMount - m.bucket;
-    this.bed.update(m.load, cuts, angle, dt);
-    this.visible = m.load > 1e-6;
+    void dt;
+    const cuts = sim.cuts.splice(0);
+    this.measure(sim);
+    this.visible = sim.held.length > 0;
     if (!this.visible) return;
     const positions = this.surface.geometry.getAttribute("position");
     for (let row = 0; row <= ROWS; row++)
       for (let col = 0; col <= COLS; col++) {
         const i = row * (COLS + 1) + col,
           x = (col * WIDTH) / COLS - WIDTH / 2,
-          z = -0.06 + (row * LENGTH) / ROWS;
+          z = SOIL_BACK + (row * LENGTH) / ROWS;
         let volume = 0,
           count = 0;
         for (let dz = -1; dz <= 0; dz++)
@@ -104,8 +158,7 @@ export class BucketSoil extends T.Group {
             volume += this.bed.amounts[rz * COLS + cx];
             count++;
           }
-        const depth =
-          ((volume / count) * 0.58) / ((WIDTH * LENGTH) / (COLS * ROWS));
+        const depth = ((volume / count) * 0.58) / AREA;
         // Feather into the bowl perimeter; the mass surface cannot show through the cheeks.
         const edge =
           row === ROWS
@@ -218,15 +271,15 @@ export class BucketSoil extends T.Group {
         : endY;
       const bankZ = total
         ? Math.max(0.7, Math.min(0.85, sourceZ / total))
-        : 0.59;
+        : 0.6;
       position.setXYZ(col, x, bankY, bankZ);
       position.setXYZ(
         COLS + 1 + col,
         x,
         total ? Math.max(-0.31, bankY * 0.4 + endY * 0.6) : endY,
-        total ? 0.65 : 0.59,
+        total ? 0.65 : 0.6,
       );
-      position.setXYZ(2 * (COLS + 1) + col, x, endY, 0.59);
+      position.setXYZ(2 * (COLS + 1) + col, x, endY, 0.6);
     }
     position.needsUpdate = true;
     this.intake.geometry.computeVertexNormals();

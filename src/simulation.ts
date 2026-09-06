@@ -1,3 +1,14 @@
+import {
+  type Frame,
+  MOUTH_NU,
+  MOUTH_NV,
+  mouthHeight,
+  toLocal,
+  toWorld,
+  makeFrame,
+} from "./bucket-shell";
+import { CLOD_VOLUME, Soil, SOIL } from "./soil";
+
 export const CELL = 0.25,
   NX = 72,
   NZ = 80,
@@ -40,6 +51,7 @@ export type Machine = {
   bucket: number;
   load: number;
 };
+/** One physical clod of earth. Carried clods live in `held`, loose ones in `falling`. */
 export type SoilClod = {
   x: number;
   y: number;
@@ -48,6 +60,7 @@ export type SoilClod = {
   vy: number;
   vz: number;
   volume: number;
+  asleep?: boolean;
 };
 export type ScoopCut = {
   x: number;
@@ -58,12 +71,13 @@ export type ScoopCut = {
   volume: number;
 };
 export type Save = {
-  version: 2;
+  version: 3;
   machine: Machine;
   ground: number[];
   deepest: number[];
   pattern: Pattern;
   falling: SoilClod[];
+  held: SoilClod[];
 };
 export function cellPosition(i: number) {
   return {
@@ -105,6 +119,36 @@ export function bucketOpening(m: Machine) {
     z: -Math.cos(m.heading + m.swing) * forward,
   };
 }
+/**
+ * World frame of the Bucket joint: origin at the bucket pivot, local x across
+ * the width, local y up when level and local z toward the cutting lip. The
+ * tooth at local (0, -0.35, 0.7) lands exactly on tooth(m).
+ */
+export function frameOf(m: Machine, out: Frame) {
+  const a = m.boom,
+    b = a + m.stick,
+    c = b + ARM.bucketMount - m.bucket,
+    yaw = m.heading + m.swing,
+    sy = Math.sin(yaw),
+    cy = Math.cos(yaw),
+    sc = Math.sin(c),
+    cc = Math.cos(c);
+  const reach =
+      ARM.baseForward + ARM.boom * Math.cos(a) + ARM.stick * Math.cos(b),
+    y = ARM.baseHeight + ARM.boom * Math.sin(a) + ARM.stick * Math.sin(b);
+  out[0] = m.x - sy * reach;
+  out[1] = y;
+  out[2] = m.z - cy * reach;
+  out[3] = cy;
+  out[4] = 0;
+  out[5] = -sy;
+  out[6] = sc * sy;
+  out[7] = cc;
+  out[8] = sc * cy;
+  out[9] = cc * sy;
+  out[10] = -sc;
+  out[11] = cc * cy;
+}
 export function axes(c: Controls, p: Pattern) {
   return {
     swing: -c.lx,
@@ -113,6 +157,7 @@ export function axes(c: Controls, p: Pattern) {
     curl: -c.rx,
   };
 }
+const MAX_CLODS = 4000;
 export class Simulation {
   machine: Machine = {
     x: 0,
@@ -127,14 +172,23 @@ export class Simulation {
   ground = new Float32Array(NX * NZ);
   deepest = new Float32Array(NX * NZ);
   pattern: Pattern = "ISO";
+  /** Loose clods: airborne, rolling or settled but not yet part of the ground. */
   falling: SoilClod[] = [];
+  /** Clods carried in the bucket; their volumes sum to machine.load. */
+  held: SoilClod[] = [];
+  soil = new Soil(this);
   private dischargeIndex = 0;
+  private spawnIndex = 0;
   resistance = 0;
   cuts: ScoopCut[] = [];
   cutRate = 0;
   changed = new Set<number>();
   dust: { x: number; y: number; z: number; dump: boolean }[] = [];
   lastAction = "Lower the boom toward the first chalk marks.";
+  private frame = makeFrame();
+  private local = new Float64Array(3);
+  private world = new Float64Array(3);
+  private rest = new Float64Array(0);
   constructor(save?: Save | null) {
     if (save) {
       this.machine = { ...save.machine };
@@ -142,6 +196,8 @@ export class Simulation {
       this.deepest.set(save.deepest);
       this.pattern = save.pattern;
       this.falling = save.falling.map((p) => ({ ...p }));
+      this.held = save.held.map((p) => ({ ...p }));
+      this.reconcileLoad();
     }
   }
   height(x: number, z: number) {
@@ -150,6 +206,107 @@ export class Simulation {
     return col >= 0 && col < NX && row >= 0 && row < NZ
       ? this.ground[row * NX + col]
       : 0;
+  }
+  /** Ground height interpolated between cell centres, the surface clods rest on. */
+  surface(x: number, z: number) {
+    const fx = clamp((x + (NX * CELL) / 2) / CELL - 0.5, 0, NX - 1.000001),
+      fz = clamp((z + (NZ * CELL) / 2) / CELL - 0.5, 0, NZ - 1.000001);
+    const col = Math.floor(fx),
+      row = Math.floor(fz),
+      tx = fx - col,
+      tz = fz - row,
+      i = row * NX + col,
+      g = this.ground;
+    const a = g[i] + (g[i + 1] - g[i]) * tx,
+      b = g[i + NX] + (g[i + NX + 1] - g[i + NX]) * tx;
+    return a + (b - a) * tz;
+  }
+  surfaceNormal(x: number, z: number, out: Float64Array) {
+    const fx = clamp((x + (NX * CELL) / 2) / CELL - 0.5, 0, NX - 1.000001),
+      fz = clamp((z + (NZ * CELL) / 2) / CELL - 0.5, 0, NZ - 1.000001);
+    const col = Math.floor(fx),
+      row = Math.floor(fz),
+      tx = fx - col,
+      tz = fz - row,
+      i = row * NX + col,
+      g = this.ground;
+    const dx =
+        ((g[i + 1] - g[i]) * (1 - tz) + (g[i + NX + 1] - g[i + NX]) * tz) /
+        CELL,
+      dz =
+        ((g[i + NX] - g[i]) * (1 - tx) + (g[i + NX + 1] - g[i + 1]) * tx) /
+        CELL;
+    const inv = 1 / Math.sqrt(dx * dx + 1 + dz * dz);
+    out[0] = -dx * inv;
+    out[1] = inv;
+    out[2] = -dz * inv;
+  }
+  frameOf(m: Machine, out: Frame) {
+    frameOf(m, out);
+  }
+  canCapture(volume: number) {
+    return this.machine.load + volume <= CAPACITY + 1e-9;
+  }
+  private heldVolume() {
+    let v = 0;
+    for (const p of this.held) v += p.volume;
+    return v;
+  }
+  /**
+   * Make the carried clods match machine.load exactly. Saves from before the
+   * physics pass, tools and tests set load directly; the difference appears as
+   * clods resting in the bowl, or the last clods are taken away.
+   */
+  reconcileLoad() {
+    const m = this.machine;
+    m.load = clamp(m.load, 0, CAPACITY);
+    let diff = m.load - this.heldVolume();
+    if (Math.abs(diff) <= 1e-7) return;
+    if (diff > 0) {
+      const n = Math.max(1, Math.round(diff / CLOD_VOLUME)),
+        each = diff / n,
+        total = this.held.length + n;
+      if (this.rest.length < total * 3) this.rest = new Float64Array(total * 3);
+      frameOf(m, this.frame);
+      const placed = this.soil.shell.restPositions(
+        total,
+        this.soil.r,
+        this.rest,
+      );
+      for (let k = 0; k < n; k++) {
+        const slot = Math.min(placed - 1, this.held.length),
+          o = slot * 3;
+        toWorld(
+          this.frame,
+          this.rest[o],
+          this.rest[o + 1],
+          this.rest[o + 2],
+          this.world,
+        );
+        this.held.push({
+          x: this.world[0],
+          y: this.world[1],
+          z: this.world[2],
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          volume: each,
+          asleep: false,
+        });
+      }
+      this.soil.anchor(m);
+      return;
+    }
+    while (diff < -1e-7 && this.held.length) {
+      const last = this.held[this.held.length - 1];
+      if (last.volume <= -diff + 1e-9) {
+        this.held.pop();
+        diff += last.volume;
+      } else {
+        last.volume += diff;
+        diff = 0;
+      }
+    }
   }
   /** Volume is transferred between ground and bucket; rendering never awards progress. */
   dig(
@@ -205,6 +362,7 @@ export class Simulation {
       Math.max(0, CAPACITY - this.machine.load) / requested,
     );
     let removed = 0;
+    const parcels: ScoopCut[] = [];
     for (const p of candidates) {
       if (fraction <= 0) break;
       this.ground[p.i] = p.old - p.depth * fraction;
@@ -220,97 +378,168 @@ export class Simulation {
         across: p.across,
         volume,
       };
+      parcels.push(parcel);
       if (this.cuts.length < 64) this.cuts.push(parcel);
       else this.cuts[this.cuts.length - 1].volume += volume;
       this.deepest[p.i] = Math.min(this.deepest[p.i], this.ground[p.i]);
       this.changed.add(p.i);
     }
     if (removed > 0) {
+      this.capture(removed, parcels);
       this.cutRate += removed / Math.max(dt, 0.001);
       this.lastAction =
         "Lift, swing right to the spoil strip, then open the bucket.";
     }
     return removed;
   }
+  /** Cut earth enters the bowl over the lip as clods; tiny bites top up the last clod. */
+  private capture(volume: number, parcels: ScoopCut[]) {
+    const last = this.held[this.held.length - 1];
+    if (volume < 0.5 * CLOD_VOLUME && last && last.volume < 1.6 * CLOD_VOLUME) {
+      last.volume += volume;
+      return;
+    }
+    const n = Math.max(1, Math.round(volume / CLOD_VOLUME)),
+      each = volume / n,
+      r = this.soil.r,
+      m = this.machine,
+      shell = this.soil.shell;
+    frameOf(m, this.frame);
+    void parcels;
+    for (let k = 0; k < n; k++) {
+      // Next free resting slot: the bowl fills from the lip inward, layer by layer.
+      const s = this.spawnIndex++;
+      shell.slot(this.held.length, this.local);
+      const x = this.local[0] + (((s * 0.7548776662) % 1) - 0.5) * 0.5 * r,
+        v = this.local[1] + 0.005,
+        u = this.local[2] + (((s * 0.5698402909) % 1) - 0.5) * 0.5 * r;
+      toWorld(this.frame, x, v, u, this.world);
+      this.held.push({
+        x: this.world[0],
+        y: this.world[1],
+        z: this.world[2],
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        volume: each,
+        asleep: false,
+      });
+    }
+    this.soil.anchor(m);
+  }
   /** Earth stays in flight until it reaches the ground; that volume is saved too. */
   dump(point: { x: number; y: number; z: number }, dt: number) {
     if (
-      this.falling.length >= 64 ||
+      this.falling.length >= MAX_CLODS ||
       Math.abs(point.x) > 8.5 ||
       Math.abs(point.z) > 9.5 ||
       this.height(point.x, point.z) >= 1.799
     )
       return 0;
-    const volume = Math.min(this.machine.load, Math.max(0, dt) * 0.22);
-    if (volume <= 1e-7) return 0;
+    const requested = Math.min(this.machine.load, Math.max(0, dt) * 0.22);
+    if (requested <= 1e-7) return 0;
+    this.reconcileLoad();
     const opening = bucketOpening(this.machine);
-    // Scatter across the cutting lip instead of emitting one solid column.
-    const across = (((this.dischargeIndex++ * 0.61803398875) % 1) - 0.5) * 0.56;
     const yaw = this.machine.heading + this.machine.swing;
     const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
-    this.machine.load -= volume;
-    this.falling.push({
-      ...point,
-      x: point.x + right.x * across,
-      z: point.z + right.z * across,
-      vx: opening.x * 0.2 + right.x * across * 0.4,
-      vy: -0.2,
-      vz: opening.z * 0.2 + right.z * across * 0.4,
-      volume,
+    let released = 0,
+      count = 0;
+    // A stream cannot leave the mouth faster than gravity clears it: a couple of
+    // whole clods per frame keeps successive batches from overlapping in the air.
+    while (this.held.length && released < requested - 1e-9 && count++ < 2) {
+      const clod = this.held.pop()!;
+      // Scatter across the cutting lip instead of emitting one solid column.
+      const across =
+        (((this.dischargeIndex++ * 0.61803398875) % 1) - 0.5) * 0.56;
+      clod.x = point.x + right.x * across;
+      clod.y = point.y;
+      clod.z = point.z + right.z * across;
+      clod.vx = opening.x * 0.2 + right.x * across * 0.4;
+      clod.vy = -1.0;
+      clod.vz = opening.z * 0.2 + right.z * across * 0.4;
+      clod.asleep = false;
+      this.falling.push(clod);
+      released += clod.volume;
+    }
+    this.machine.load = Math.max(0, this.machine.load - released);
+    return released;
+  }
+  /** Once the mouth faces down, the carried load lets go from the lip inward. */
+  private releaseTipped(dt: number, tip: { x: number; y: number; z: number }) {
+    const m = this.machine;
+    if (
+      m.load <= 0 ||
+      !this.held.length ||
+      bucketOpening(m).y >= 0.25 ||
+      tip.y <= this.height(tip.x, tip.z) + 0.12
+    )
+      return;
+    frameOf(m, this.frame);
+    const order = this.held.map((clod, k) => {
+      toLocal(this.frame, clod.x, clod.y, clod.z, this.local);
+      return { k, exit: mouthHeight(this.local[2], this.local[1]) };
     });
-    return volume;
+    order.sort((a, b) => b.exit - a.exit);
+    let released = 0;
+    const quota = dt * SOIL.tipRate,
+      loose = new Set<number>();
+    for (const { k } of order) {
+      if (released >= quota && loose.size) break;
+      loose.add(k);
+      released += this.held[k].volume;
+    }
+    // Released earth is helped out of the mouth, the way an operator shakes a bucket.
+    const f = this.frame,
+      nx = MOUTH_NV * f[6] + MOUTH_NU * f[9],
+      ny = MOUTH_NV * f[7] + MOUTH_NU * f[10],
+      nz = MOUTH_NV * f[8] + MOUTH_NU * f[11];
+    const kept: SoilClod[] = [];
+    for (const [k, clod] of this.held.entries()) {
+      if (loose.has(k)) {
+        clod.asleep = false;
+        clod.vx += nx * 1.2;
+        clod.vy += ny * 1.2 + 0.4;
+        clod.vz += nz * 1.2;
+        this.falling.push(clod);
+      } else kept.push(clod);
+    }
+    this.held = kept;
+    m.load = this.held.length ? Math.max(0, m.load - released) : 0;
   }
-  private deposit(point: SoilClod) {
-    const cx = Math.floor((point.x + (NX * CELL) / 2) / CELL),
-      cz = Math.floor((point.z + (NZ * CELL) / 2) / CELL);
-    const candidates: number[] = [];
-    for (let row = cz - 2; row <= cz + 2; row++)
-      for (let col = cx - 2; col <= cx + 2; col++) {
+  /**
+   * A settled clod becomes ground: it fills the lowest of the cells around it,
+   * so piles spread at the 25 cm grid instead of growing single-cell spikes.
+   */
+  absorb(clod: SoilClod) {
+    const cx = Math.floor((clod.x + (NX * CELL) / 2) / CELL),
+      cz = Math.floor((clod.z + (NZ * CELL) / 2) / CELL),
+      rise = clod.volume / (CELL * CELL);
+    let best = -1,
+      lowest = Infinity;
+    for (let row = cz - 1; row <= cz + 1; row++)
+      for (let col = cx - 1; col <= cx + 1; col++) {
         if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
-        const i = row * NX + col,
-          p = cellPosition(i);
-        if (Math.hypot(p.x - point.x, p.z - point.z) < 0.6) candidates.push(i);
+        const i = row * NX + col;
+        if (this.ground[i] + rise > 1.8) continue;
+        const rank = this.ground[i] - (row === cz && col === cx ? 1e-4 : 0);
+        if (rank < lowest) {
+          lowest = rank;
+          best = i;
+        }
       }
-    candidates.sort((a, b) => this.ground[a] - this.ground[b]);
-    for (const i of candidates) {
-      const old = this.ground[i],
-        amount = Math.min(point.volume, Math.max(0, 1.8 - old) * CELL * CELL);
-      if (amount <= 0) continue;
-      this.ground[i] += amount / (CELL * CELL);
-      point.volume = Math.max(
-        0,
-        point.volume - (this.ground[i] - old) * CELL * CELL,
-      );
-      this.changed.add(i);
-      if (point.volume < 1e-7) break;
-    }
-  }
-  private fall(dt: number) {
-    for (let i = this.falling.length - 1; i >= 0; i--) {
-      const p = this.falling[i];
-      p.vy -= 9.81 * dt;
-      p.y += p.vy * dt;
-      p.x = clamp(p.x + p.vx * dt, -8.7, 8.7);
-      p.z = clamp(p.z + p.vz * dt, -9.7, 9.7);
-      const ground = this.height(p.x, p.z);
-      if (p.y > ground + 0.025) continue;
-      this.deposit(p);
-      if (p.volume < 1e-7) {
-        this.dust.push({ ...p, dump: true });
-        this.falling.splice(i, 1);
-        this.lastAction = spoil(p.x, p.z)
-          ? "Tidy pile. Swing back for the next bite."
-          : "Place the next load inside the amber spoil strip.";
-      } else {
-        p.y = this.height(p.x, p.z) + 0.025;
-        p.vy = 0;
-      }
-    }
+    if (best < 0) return false;
+    this.ground[best] += rise;
+    this.changed.add(best);
+    this.lastAction = spoil(clod.x, clod.z)
+      ? "Tidy pile. Swing back for the next bite."
+      : "Place the next load inside the amber spoil strip.";
+    return true;
   }
   update(c: Controls, dt: number) {
     dt = clamp(dt, 0, 0.05);
     const m = this.machine;
-    this.fall(dt);
+    this.reconcileLoad();
+    const pose = { ...m };
     const previousResistance = this.resistance;
     this.resistance = 0;
     this.cutRate = 0;
@@ -392,12 +621,8 @@ export class Simulation {
       this.lastAction =
         "Teeth against the soil. Curl and draw the arm toward you to take a bite.";
     }
-    if (
-      m.load > 0 &&
-      bucketOpening(m).y < 0.25 &&
-      tip.y > this.height(tip.x, tip.z) + 0.12
-    )
-      this.dump(tip, dt);
+    if (dt > 0) this.soil.step(dt, pose, m);
+    this.releaseTipped(dt, tip);
     if (m.load > CAPACITY * 0.98)
       this.lastAction =
         "Bucket full. Raise the boom before swinging to the spoil strip.";
@@ -440,14 +665,39 @@ export class Simulation {
   }
   snapshot(): Save {
     return {
-      version: 2,
+      version: 3,
       machine: { ...this.machine },
       ground: Array.from(this.ground),
       deepest: Array.from(this.deepest),
       pattern: this.pattern,
       falling: this.falling.map((p) => ({ ...p })),
+      held: this.held.map((p) => ({ ...p })),
     };
   }
+}
+function validClods(list: unknown): list is SoilClod[] {
+  return (
+    Array.isArray(list) &&
+    list.length <= MAX_CLODS &&
+    list.every(
+      (p) =>
+        p &&
+        typeof p === "object" &&
+        ["x", "y", "z", "vx", "vy", "vz", "volume"].every((k) =>
+          Number.isFinite((p as SoilClod)[k as keyof SoilClod]),
+        ) &&
+        Math.abs(p.x) <= 9 &&
+        Math.abs(p.z) <= 10 &&
+        p.y >= -2 &&
+        p.y <= 10 &&
+        Math.abs(p.vx) <= 25 &&
+        Math.abs(p.vz) <= 25 &&
+        Math.abs(p.vy) <= 25 &&
+        p.volume > 0 &&
+        p.volume <= CAPACITY &&
+        (p.asleep === undefined || typeof p.asleep === "boolean"),
+    )
+  );
 }
 export function parseSave(raw: string | null): Save | null {
   try {
@@ -457,9 +707,14 @@ export function parseSave(raw: string | null): Save | null {
       data.version = 2;
       data.falling = [];
     }
+    if (data.version === 2) {
+      // Bucket contents were a bare volume; the constructor rests it in the bowl as clods.
+      data.version = 3;
+      if (!Array.isArray(data.held)) data.held = [];
+    }
     const s = data as Save;
     if (
-      s.version !== 2 ||
+      s.version !== 3 ||
       !["ISO", "Alternate"].includes(s.pattern) ||
       !s.machine
     )
@@ -494,27 +749,7 @@ export function parseSave(raw: string | null): Save | null {
       )
     )
       return null;
-    if (
-      !Array.isArray(s.falling) ||
-      s.falling.length > 64 ||
-      s.falling.some(
-        (p) =>
-          !p ||
-          !["x", "y", "z", "vx", "vy", "vz", "volume"].every((k) =>
-            Number.isFinite(p[k as keyof SoilClod]),
-          ) ||
-          Math.abs(p.x) > 9 ||
-          Math.abs(p.z) > 10 ||
-          p.y < -2 ||
-          p.y > 10 ||
-          Math.abs(p.vx) > 3 ||
-          Math.abs(p.vz) > 3 ||
-          Math.abs(p.vy) > 20 ||
-          p.volume <= 0 ||
-          p.volume > CAPACITY,
-      )
-    )
-      return null;
+    if (!validClods(s.falling) || !validClods(s.held)) return null;
     return s;
   } catch {
     return null;

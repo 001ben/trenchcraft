@@ -6,8 +6,31 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Hydraulics } from "./hydraulics";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Simulation, NX, NZ, cellPosition, tooth, ARM } from "./simulation";
+import { CLOD_RADIUS, CLOD_VOLUME, SOIL } from "./soil";
+import type { SoilClod } from "./simulation";
 const material = (color: number) =>
   new T.MeshStandardMaterial({ color, roughness: 0.9 });
+/** A lumpy sphere so clods read as clumps of earth rather than marbles. */
+function clodGeometry() {
+  const g = new T.IcosahedronGeometry(1, 1),
+    pos = g.attributes.position as T.BufferAttribute,
+    seen = new Map<string, number>();
+  let seed = 3;
+  for (let i = 0; i < pos.count; i++) {
+    const key = [pos.getX(i), pos.getY(i), pos.getZ(i)]
+      .map((v) => v.toFixed(4))
+      .join(",");
+    let k = seen.get(key);
+    if (k === undefined) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      k = 0.8 + (seed / 4294967296) * 0.36;
+      seen.set(key, k);
+    }
+    pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.85, pos.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  return g;
+}
 export class View {
   renderer: T.WebGLRenderer;
   scene = new T.Scene();
@@ -34,12 +57,15 @@ export class View {
   private trackPhase = [0, 0];
   private lastHeading = 0;
   private hydraulics?: Hydraulics;
-  private bucketSoil?: BucketSoil;
-  private fallingSoil = new T.InstancedMesh(
-    new T.IcosahedronGeometry(1, 1),
+  bucketSoil?: BucketSoil;
+  /** Every physical clod, carried or loose, in one instanced draw. */
+  private clods = new T.InstancedMesh(
+    clodGeometry(),
     material(0x795033),
-    64,
+    SOIL.capacity,
   );
+  private clodSeeds = new WeakMap<SoilClod, number>();
+  private clodSeed = 0;
   private cursor = new T.Mesh(
     new T.RingGeometry(0.36, 0.41, 24),
     new T.MeshBasicMaterial({
@@ -89,7 +115,7 @@ export class View {
     this.scene.add(sun);
     this.terrain = new LandSurface(sim);
     this.scene.add(this.terrain);
-    for (const mesh of [this.fallingSoil, this.dustMesh])
+    for (const mesh of [this.clods, this.dustMesh])
       mesh.material.map = this.terrain.material.map;
     const bladeGeometry = new T.BufferGeometry();
     bladeGeometry.setAttribute(
@@ -197,13 +223,15 @@ export class View {
     this.track = new T.InstancedMesh(treadGeometry, material(0x242927), 72);
     this.track.castShadow = true;
     this.model.add(this.track);
-    this.scene.add(this.model, this.fallingSoil, this.dustMesh);
+    this.scene.add(this.model, this.clods, this.dustMesh);
     this.dustMesh.count = 0;
     this.dustMesh.frustumCulled = false;
-    this.fallingSoil.castShadow = true;
-    this.fallingSoil.count = 0;
+    this.clods.castShadow = true;
+    this.clods.receiveShadow = true;
+    this.clods.count = 0;
+    this.clods.instanceMatrix.setUsage(T.DynamicDrawUsage);
     // Clods move independently; the initial empty instance bounds do not describe them.
-    this.fallingSoil.frustumCulled = false;
+    this.clods.frustumCulled = false;
     this.cursor.rotation.x = -Math.PI / 2;
     this.scene.add(this.cursor);
     window.addEventListener("resize", () => this.resize());
@@ -299,7 +327,18 @@ export class View {
     this.temp.updateMatrix();
     this.grassBlades.setMatrixAt(grassIndex, this.temp.matrix);
   }
+  /** Fixed per-clod tumble so a resting heap does not shimmer. */
+  private seedOf(clod: SoilClod) {
+    let seed = this.clodSeeds.get(clod);
+    if (seed === undefined) {
+      seed = (this.clodSeed++ * 0.61803398875) % 1;
+      this.clodSeeds.set(clod, seed);
+    }
+    return seed;
+  }
   render(dt: number, time: number) {
+    // Tools and old saves set the load directly; show it as clods resting in the bowl.
+    this.sim.reconcileLoad();
     const m = this.sim.machine;
     this.model.position.set(m.x, 0, m.z);
     this.model.rotation.y = m.heading;
@@ -377,16 +416,21 @@ export class View {
     );
     this.cursor.visible =
       !this.overview && tip.y > this.sim.height(tip.x, tip.z) + 0.15;
-    this.fallingSoil.count = this.sim.falling.length;
-    this.sim.falling.forEach((p, i) => {
-      this.temp.position.set(p.x, p.y, p.z);
-      this.temp.rotation.set(time * 3 + i, i * 0.7, time + i);
-      const size = Math.cbrt(p.volume) * 0.75;
-      this.temp.scale.set(size * (0.8 + (i % 3) * 0.15), size * 0.7, size);
-      this.temp.updateMatrix();
-      this.fallingSoil.setMatrixAt(i, this.temp.matrix);
-    });
-    this.fallingSoil.instanceMatrix.needsUpdate = true;
+    let count = 0;
+    for (const list of [this.sim.held, this.sim.falling])
+      for (const p of list) {
+        if (count >= SOIL.capacity) break;
+        const seed = this.seedOf(p);
+        this.temp.position.set(p.x, p.y, p.z);
+        this.temp.rotation.set(seed * 6.28, seed * 40, seed * 17);
+        const size = CLOD_RADIUS * 1.5 * Math.cbrt(p.volume / CLOD_VOLUME);
+        this.temp.scale.set(size * (0.9 + seed * 0.2), size * 0.9, size);
+        this.temp.updateMatrix();
+        this.clods.setMatrixAt(count++, this.temp.matrix);
+      }
+    this.clods.count = count;
+    this.clods.instanceMatrix.needsUpdate = true;
+    void time;
     for (const p of this.sim.dust.splice(0))
       if (this.particles.length < 36) {
         const position = new T.Vector3(p.x, p.y + 0.12, p.z);

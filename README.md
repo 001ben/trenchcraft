@@ -1,8 +1,6 @@
 # Trenchcraft
 
-Scooping now cuts a band across the bucket's width, with removed volume limited by actual tooth travel through the bank. Captured soil enters a small 9-by-12 bed at the lip, rolls down the bowl as it curls, and empties from the front when discharged. A short contact strip connects active cuts to the lip; the former flying collection particles and growing sphere are removed. Cut resistance affects crowd/curl speed, and enabling sound adds a scrape proportional to actual earth removal. Saved load and soil volume remain compatible; reloaded contents start settled inside the bowl.
-
-`src/bucket-load.ts` owns the bounded in-bucket settling approximation, and `src/bucket-soil.ts` renders its continuous surface and closed edges. This is a shallow granular approximation, not a full particle/contact solver. `node tools/scoop-check.mjs` captures successive frames of a real scoop and checks that visible contents match load and no collection particles appear. `node tools/terrain-benchmark.mjs scoop-loaded --loaded` exercises the settling bucket with the existing heavy terrain scenario.
+Earth is now physical. Every bite of soil becomes clods: equal-radius particles with gravity, contacts, Coulomb friction and light cohesion, solved with position-based dynamics. The authored scoop shell (rolled plate, side cheeks and toothed lip, sampled from the same curves as the Blender model) pushes, carries and releases them, so the load rides in the bowl through a lift and swing, heaps above the rim, spills when tilted too far and pours out of the mouth when opened. Loose clods land, settle, sleep and are returned to the 25 cm ground grid with their volume intact; a full bucket is about 370 clods and the solver is bounded at 2,600. `src/soil.ts` is the solver, `src/bucket-shell.ts` the bucket collider, and `src/bucket-soil.ts` draws a continuous soil skin over the carried clods. Cutting still follows tooth travel through the bank; the removed volume enters the bowl over the lip. `node tools/soil-check.mjs` drives a real scoop, lift, swing and dump with close-ups. Saves move to version 3 (carried and loose clods); earlier saves migrate and their bucket volume rests in the bowl.
 
 A gentle, stylized mini-excavator practice game. Built for two thumbs on a phone or iPad, with keyboard and dual-stick gamepad support. The first job is a six-metre service trench on a small practice plot: learn to reach, curl, lift, swing and place spoil while keeping the cut straight.
 
@@ -46,7 +44,7 @@ Keyboard travel uses **Q / Z** for the left track (forward/reverse), **E / C** f
 
 The permanent minimap is removed for this small plot. The guide still offers **Plot overview** when you want to see the full trench and spoil strip. Trench progress and bucket load/depth remain visible; detailed star, straightness and tidiness scores live in the guide.
 
-Lower the teeth against the soil, then curl and pull the arm in. Untouched ground resists further lowering; curling/crowding takes a bite. The bucket holds **0.22 m³**, with a visible soil mound and a percentage indicator. Lift it clear, swing toward the amber spoil strip and open it: soil falls from the cutting lip under gravity and builds a pile on impact. A tipped bucket continues emptying after you release the stick. Using several attachment movements together shares hydraulic speed, and a full bucket lifts slightly more slowly.
+Lower the teeth against the soil, then curl and pull the arm in. Untouched ground resists further lowering; curling/crowding takes a bite. The bucket holds **0.22 m³**, with a visible soil mound and a percentage indicator. Lift it clear, swing toward the amber spoil strip and open it: the clods slide out of the mouth under gravity, land, settle and become part of the ground. A tipped bucket continues emptying after you release the stick, and a bucket tilted only part way keeps a cup of earth in its heel. Using several attachment movements together shares hydraulic speed, and a full bucket lifts slightly more slowly.
 
 The dashed cream line marks a **6 m × 1 m** practice trench with a **0.6 m** target depth. The cutting footprint is narrower than the trench, so adjacent bites are needed. Move the tracks to reach the full length.
 
@@ -58,13 +56,16 @@ Stars reward actual earthwork:
 - Two stars: 90% excavation and 85% of all cuts on the intended line.
 - Three stars: 95% excavation, 95% on line and 85% of above-ground spoil in its marked strip.
 
-Backfilling reduces progress. Re-digging the same cells cannot erase earlier off-line cuts. Volume is conserved between ground, bucket and falling soil. Progress, terrain, bucket contents, airborne soil and control pattern save in `trenchcraft-save-v1` on this browser. The key is unchanged; version 2 records migrate earlier saves automatically. The guide contains a confirmed fresh-plot reset.
+Backfilling reduces progress. Re-digging the same cells cannot erase earlier off-line cuts. Volume is conserved between ground, bucket and falling soil. Progress, terrain, carried and loose clods and control pattern save in `trenchcraft-save-v1` on this browser. The key is unchanged; version 3 records migrate earlier saves automatically, resting any saved bucket volume in the bowl as clods. The guide contains a confirmed fresh-plot reset.
 
 ## Source map
 
 | File                               | Responsibility                                                                                  |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/simulation.ts`                | Joint kinematics, input pattern, terrain edits, volume, score and save validation               |
+| `src/simulation.ts`                | Joint kinematics, input pattern, terrain edits, clod capture and release, score and saves       |
+| `src/soil.ts`                      | Physical clods: contacts, friction, cohesion, sleeping and return to the ground grid            |
+| `src/bucket-shell.ts`              | Bucket collision shell from the authored outline; carried/loose classification and fill slots  |
+| `src/bucket-soil.ts`               | Continuous soil skin over the carried clods and the bank contact strip                          |
 | `src/controls.ts`                  | Two independent captured pointers, keyboard and gamepad input                                   |
 | `src/view.ts`                      | Three.js plot, animated Blender joints and track shoes, ground instances, particles and cameras |
 | `src/hydraulics.ts`                | Cylinder/rod visuals connected to moving attachment pivots                                      |
@@ -76,6 +77,7 @@ Backfilling reduces progress. Re-digging the same cells cannot erase earlier off
 | `tools/browser-check.mjs`          | Physical browser input, screenshots and touch checks (Edge)                                     |
 | `tools/model-check.mjs`            | Render/simulation joint agreement and a small timing sample                                     |
 | `tools/bucket-check.mjs`           | Empty/partial/full scoop and falling-soil close-ups; track animation direction checks           |
+| `tools/soil-check.mjs`             | Real scoop, lift, swing and dump with bowl close-ups, retention and settling checks            |
 
 The reference-guided visual pass and its source photographs are documented in [art/REFERENCES.md](art/REFERENCES.md). The body, canopy, tapered boom, hoses, track details and animated bucket rocker follow those references while retaining the established digging reach.
 
@@ -83,7 +85,7 @@ Rebuild the model with Blender 5:
 
 The latest visual pass adds formed body panels, cooling louvres, graphite canopy, distinct enamel/rubber/steel materials, a continuously curved bucket shell, tapered teeth and instanced chevron track ribs. One generated environment supplies metal reflections without dynamic capture or post-processing. The GLB is 1.61 MB.
 
-`src/land-surface.ts` renders the authoritative 25 cm soil grid as a connected surface with shared corners, subtle irregular edges and smooth normals. A small mipmapped grain texture adds detail. Cell-center heights remain exact; edits upload only nearby vertices/normals. Grass stays removed after backfill. Buried box faces are gone, grass tufts and transient dirt are instanced, and the 64-clod simulation limit is unchanged. Run `node tools/terrain-benchmark.mjs after` for the repeatable busy-scene comparison documented in VERIFICATION.md.
+`src/land-surface.ts` renders the authoritative 25 cm soil grid as a connected surface with shared corners, subtle irregular edges and smooth normals. A small mipmapped grain texture adds detail. Cell-center heights remain exact; edits upload only nearby vertices/normals. Grass stays removed after backfill. Buried box faces are gone, grass tufts and transient dirt are instanced, and the clod solver is bounded at 2,600 particles. Run `node tools/terrain-benchmark.mjs after` for the repeatable busy-scene comparison documented in VERIFICATION.md.
 
 ```powershell
 & 'C:/Program Files/Blender Foundation/Blender 5.0/blender.exe' --background --python art/build_excavator.py
@@ -93,7 +95,7 @@ The GLB exports at zero joint angles. Runtime poses rotate `Upper`, `Boom`, `Sti
 
 ## Design intent and limits
 
-This is a controls-familiarity game, not machine certification or an excavation safety simulator. It uses kinematic joints, a 25 cm soil height grid, approximate tooth contact and a bounded 64-clod gravity simulation. It does not model real hydraulic forces, full bucket/body collisions, undercarriage contact physics, soil collapse or underground services. Soil is cut when inward-moving teeth overlap it while curling/crowding; there is no force feedback. Cab visibility and depth judgement need real user feedback. Test ergonomics and GPU performance on an actual phone/iPad before calling them proven.
+This is a controls-familiarity game, not machine certification or an excavation safety simulator. It uses kinematic joints, a 25 cm soil height grid, approximate tooth contact and a bounded particle soil (at most 2,600 clods, with settled earth returned to the grid). Clods collide with the bucket shell and the ground but not with the machine body or tracks. It does not model real hydraulic forces, undercarriage contact physics, bank collapse ahead of the teeth or underground services. Soil is cut when inward-moving teeth overlap it while curling/crowding; there is no force feedback. Cab visibility and depth judgement need real user feedback. Test ergonomics and GPU performance on an actual phone/iPad before calling them proven.
 
 GILT Quarry Works was design/engineering reference material: retain bounded rendering, physical input checks, careful saves and compact mobile UI. Its game code and assets were not copied into this project. This game has its own original Blender model and its own simulation, controls and scoring.
 
