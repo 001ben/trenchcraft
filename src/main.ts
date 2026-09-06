@@ -10,6 +10,9 @@ try {
 let sim = new Simulation(parseSave(stored)),
   running = false,
   travel = false;
+// Every visit starts with the standard lesson controls; saved earthwork is retained.
+sim.pattern = "ISO";
+let resumeOnFocus = false;
 const app = document.querySelector<HTMLElement>("#app")!;
 const stick = (id: string, title: string, keys: string) =>
   `<section class="hand"><div class="hand-title"><span class="hand-name">${title}</span><small>${keys}</small></div><div id="${id}" class="joystick" aria-label="${title} virtual joystick"><span class="north"></span><span class="west"></span><span class="east"></span><span class="south"></span><i class="cross horizontal"></i><i class="cross vertical"></i><b class="knob"></b></div></section>`;
@@ -24,6 +27,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
 const input = new Input($("left-stick"), $("right-stick")),
   view = new View($<HTMLCanvasElement>("world"), sim),
   panel = $<HTMLDialogElement>("panel");
+view.cab = true;
+$("camera").textContent = "Chase view";
 let audio: AudioContext | null = null,
   osc: OscillatorNode | null = null,
   gain: GainNode | null = null,
@@ -74,6 +79,7 @@ function labels() {
 }
 function pause() {
   running = false;
+  resumeOnFocus = false;
   input.clear();
   save();
   $<HTMLSelectElement>("pattern").value = sim.pattern;
@@ -84,6 +90,7 @@ $("guide").onclick = pause;
 $("start").onclick = () => {
   panel.close();
   running = true;
+  resumeOnFocus = false;
   input.clear();
   if (!audio) {
     audio = new AudioContext();
@@ -140,6 +147,10 @@ $("reset-yes").onclick = () => {
   for (let i = 0; i < sim.ground.length; i++) sim.changed.add(i);
   completed = false;
   travel = false;
+  view.cab = true;
+  view.overview = false;
+  $("camera").textContent = "Chase view";
+  $("overview").textContent = "Plot overview";
   labels();
   save();
   pause();
@@ -148,14 +159,26 @@ panel.addEventListener("cancel", (e) => {
   e.preventDefault();
   $("start").click();
 });
+function suspend() {
+  if (!running) return;
+  running = false;
+  resumeOnFocus = true;
+  input.clear();
+  save();
+}
+function resume() {
+  if (!resumeOnFocus || document.hidden || panel.open) return;
+  resumeOnFocus = false;
+  running = true;
+  last = performance.now();
+  input.clear();
+}
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    pause();
-  }
+  if (document.hidden) suspend();
+  else resume();
 });
-window.addEventListener("blur", () => {
-  if (running) pause();
-});
+window.addEventListener("blur", suspend);
+window.addEventListener("focus", resume);
 window.addEventListener("pagehide", save);
 window.addEventListener("keydown", (e) => {
   if (e.code === "Escape" && !panel.open) pause();
@@ -223,7 +246,8 @@ view
   .load()
   .then(() => {
     $("loading").hidden = true;
-    running = true;
+    running = !document.hidden && document.hasFocus();
+    resumeOnFocus = !running;
     last = performance.now();
     hud();
     requestAnimationFrame(frame);

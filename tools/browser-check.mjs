@@ -14,7 +14,22 @@ try {
   await page.locator("#loading").waitFor({ state: "hidden" });
   assert.equal(await page.locator("#panel").isVisible(), false);
   assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
+  assert.equal(
+    await page.locator("#camera").innerText(),
+    "Chase view",
+    "starts in cab view",
+  );
+  assert.equal(await page.locator("#dig").getAttribute("aria-pressed"), "true");
+  const cover = await browser.newPage();
+  await cover.bringToFront();
+  await page.bringToFront();
+  assert.equal(
+    await page.locator("#panel").isVisible(),
+    false,
+    "returning to the game must not open the guide",
+  );
   await page.screenshot({ path: ".local/desktop.png" });
+  await page.screenshot({ path: ".local/cab.png" });
   await page.keyboard.down("ArrowUp");
   await page.waitForTimeout(530);
   await page.keyboard.up("ArrowUp");
@@ -28,6 +43,14 @@ try {
     JSON.parse(localStorage.getItem("trenchcraft-save-v1")),
   );
   assert.ok(scooped.machine.load > 0.003, "UI controls physically scoop");
+  await cover.bringToFront();
+  await page.bringToFront();
+  assert.equal(
+    await page.locator("#panel").isVisible(),
+    true,
+    "an explicitly opened guide stays open",
+  );
+  await cover.close();
   await page.locator("#start").click();
   await page.keyboard.down("ArrowDown");
   await page.waitForTimeout(1600);
@@ -55,7 +78,8 @@ try {
   await page.screenshot({ path: ".local/dug-and-dumped.png" });
   await page.locator("#camera").click();
   await page.waitForTimeout(600);
-  await page.screenshot({ path: ".local/cab.png" });
+  assert.equal(await page.locator("#camera").innerText(), "Cab view");
+  await page.screenshot({ path: ".local/chase.png" });
   await page.locator("#guide").click();
   await page.locator("#pattern").selectOption("Alternate");
   await page.locator("#start").click();
@@ -65,10 +89,9 @@ try {
   );
   await page.reload({ waitUntil: "networkidle" });
   await page.locator("#loading").waitFor({ state: "hidden" });
-  assert.equal(
-    await page.locator("#left-stick .north").innerText(),
-    "Boom down",
-  );
+  assert.equal(await page.locator("#panel").isVisible(), false);
+  assert.equal(await page.locator("#camera").innerText(), "Chase view");
+  assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
   await page.locator("#guide").click();
   const beforeDrive = await page.evaluate(
     () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
@@ -93,10 +116,7 @@ try {
   assert.equal(afterDrive.stick, beforeDrive.stick);
   await page.locator("#start").click();
   await page.locator("#dig").click();
-  assert.equal(
-    await page.locator("#left-stick .north").innerText(),
-    "Boom down",
-  );
+  assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
     isMobile: true,
@@ -106,6 +126,11 @@ try {
   await mobile.goto(base, { waitUntil: "networkidle" });
   await mobile.locator("#loading").waitFor({ state: "hidden" });
   assert.equal(await mobile.locator("#panel").isVisible(), false);
+  assert.equal(await mobile.locator("#camera").innerText(), "Chase view");
+  assert.equal(
+    await mobile.locator("#left-stick .north").innerText(),
+    "Arm out",
+  );
   const cdp = await mobile.context().newCDPSession(mobile);
   const l = await mobile.locator("#left-stick").boundingBox(),
     r = await mobile.locator("#right-stick").boundingBox();

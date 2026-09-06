@@ -25,7 +25,7 @@ GitHub Actions runs the unit tests and builds with the `/trenchcraft/` base path
 
 ## Playing
 
-The plot opens straight into **Dig** with ISO as the fresh-game default; there is no start menu. Use **?** whenever you want the lesson, settings or a pause. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
+Every visit opens straight into **cab view**, **Dig** mode and **ISO controls**, with saved earthwork restored and no start menu. Switching tabs or losing focus pauses quietly; returning resumes play without opening the guide. An explicitly opened guide remains paused until you close it. Use **?** whenever you want the lesson, settings or a pause. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
 
 | Direction    | ISO left joystick | ISO right joystick |
 | ------------ | ----------------- | ------------------ |
@@ -34,7 +34,7 @@ The plot opens straight into **Dig** with ISO as the fresh-game default; there i
 | Left         | Swing left        | Bucket curl        |
 | Right        | Swing right       | Bucket empty       |
 
-The guide offers **Alternate · boom on left**, which swaps the boom and arm axes while retaining swing on the left hand and curl on the right. Labels and the lesson change with the selected pattern. ISO is the default; “universal” does not mean every real machine is configured identically. The mapping is based on [Kubota's U10-5 operator manual, printed pages 38–41](https://media.kubota.io/uploads/U10-Ops-Manual_LR.pdf).
+The guide offers **Alternate · boom on left**, which swaps the boom and arm axes while retaining swing on the left hand and curl on the right. Labels and the lesson change with the selected pattern for that visit; opening or reloading the game returns to ISO. ISO is the default; “universal” does not mean every real machine is configured identically. The mapping is based on [Kubota's U10-5 operator manual, printed pages 38–41](https://media.kubota.io/uploads/U10-Ops-Manual_LR.pdf).
 
 Tap **Drive** in the top bar. Drive mode gives each hand its own track's forward/reverse lever. Push both forward to travel; opposite directions pivot. Travel is relative to the tracks, even when the upper carriage is swung around. Tap **Dig** to return to attachments. The sticks are labelled Left track and Right track while driving. Cab/chase views are in the top bar; the guide also offers a plot overview and optional synthesized sound.
 
