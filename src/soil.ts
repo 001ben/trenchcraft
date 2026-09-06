@@ -9,6 +9,8 @@
  */
 import {
   BucketShell,
+  LIP_U,
+  LIP_V,
   makeFrame,
   toLocal,
   toWorld,
@@ -47,6 +49,10 @@ export const SOIL = {
   absorbPerFrame: 120,
   /** Released volume per second once the mouth faces down. */
   tipRate: 0.4,
+  /** A cut clod not yet in the bowl stops counting as load beyond this distance from the lip... */
+  pendingReach: 0.85,
+  /** ...or after this many frames. */
+  pendingFrames: 90,
 };
 /** What the solver needs from the plot and the machine. */
 export interface SoilHost {
@@ -87,6 +93,9 @@ export class Soil {
   private alive = new Uint8Array(SOIL.capacity);
   private awake = new Uint8Array(SOIL.capacity);
   private held = new Uint8Array(SOIL.capacity);
+  /** Carried on the books but still outside the bowl, waiting to be swept in. */
+  private pending = new Uint8Array(SOIL.capacity);
+  private pendingAge = new Uint16Array(SOIL.capacity);
   private still = new Uint16Array(SOIL.capacity);
   private born = new Uint8Array(SOIL.capacity);
   /** Set when a clod touched anything this substep; only resting clods get settling damping. */
@@ -154,6 +163,8 @@ export class Soil {
     this.alive[i] = 1;
     this.awake[i] = obj.asleep ? 0 : 1;
     this.held[i] = heldNow ? 1 : 0;
+    this.pending[i] = heldNow && obj.pending ? 1 : 0;
+    this.pendingAge[i] = 0;
     this.still[i] = 0;
     this.settle[i] = 0;
     this.born[i] = SOIL.substeps;
@@ -278,6 +289,7 @@ export class Soil {
       obj.vy = this.vy[i];
       obj.vz = this.vz[i];
       obj.asleep = !this.awake[i];
+      obj.pending = this.held[i] === 1 && this.pending[i] === 1;
       (this.held[i] ? held : falling).push(obj);
     }
   }
@@ -291,10 +303,19 @@ export class Soil {
     if (jump < 0.35 && turn < 0.12) return false;
     const l = this.l3,
       w = this.w3;
+    let slot = 0;
+    for (let k = 0; k < this.activeCount; k++) {
+      const i = this.active[k];
+      if (this.held[i] && !this.pending[i]) slot++;
+    }
     for (let k = 0; k < this.activeCount; k++) {
       const i = this.active[k];
       if (!this.held[i]) continue;
-      toLocal(last, this.px[i], this.py[i], this.pz[i], l);
+      if (this.pending[i]) {
+        // A pose jump is not a sweep; treat cut earth still on the bank as taken.
+        this.shell.slot(slot++, l);
+        this.pending[i] = 0;
+      } else toLocal(last, this.px[i], this.py[i], this.pz[i], l);
       toWorld(f, l[0], l[1], l[2], w);
       this.px[i] = this.ppx[i] = w[0];
       this.py[i] = this.ppy[i] = w[1];
@@ -350,6 +371,10 @@ export class Soil {
     this.updateSleep();
     this.transitions();
     this.absorb();
+    if (++this.sweepFrame % 15 === 0) {
+      if (this.pairsDirty) this.buildPairs();
+      this.groundedSweep();
+    }
     this.exportObjects();
     this.physicsMs =
       typeof performance !== "undefined" ? performance.now() - t0 : 0;
@@ -772,14 +797,32 @@ export class Soil {
       r = this.r,
       f = shell.frame,
       up = shell.mouthWorldUp(),
-      openingUp = up > 0.3;
+      openingUp = up > 0.3,
+      lip = this.w3,
+      reach2 = SOIL.pendingReach * SOIL.pendingReach;
+    toWorld(f, 0, LIP_V, LIP_U, lip);
     for (let k = 0; k < this.activeCount; k++) {
       const i = this.active[k];
       toLocal(f, this.px[i], this.py[i], this.pz[i], l);
       if (this.held[i]) {
-        // An inverted bowl supports nothing; otherwise the clod must still be in it.
-        if (up < -0.05 || !shell.contains(l[0], l[1], l[2], 1.5 * r)) {
+        let drop = up < -0.05;
+        if (this.pending[i]) {
+          // Freshly cut earth counts until the bowl either takes it or leaves it.
+          if (shell.contains(l[0], l[1], l[2], 0)) this.pending[i] = 0;
+          else {
+            const dx = this.px[i] - lip[0],
+              dy = this.py[i] - lip[1],
+              dz = this.pz[i] - lip[2];
+            if (
+              ++this.pendingAge[i] > SOIL.pendingFrames ||
+              dx * dx + dy * dy + dz * dz > reach2
+            )
+              drop = true;
+          }
+        } else if (!shell.contains(l[0], l[1], l[2], 1.5 * r)) drop = true;
+        if (drop) {
           this.held[i] = 0;
+          this.pending[i] = 0;
           this.host.machine.load = Math.max(
             0,
             this.host.machine.load - this.objs[i]!.volume,
@@ -796,6 +839,45 @@ export class Soil {
         this.held[i] = 1;
         this.host.machine.load += this.objs[i]!.volume;
       }
+    }
+  }
+  private grounded = new Uint8Array(SOIL.capacity);
+  private sweepFrame = 0;
+  /**
+   * Island check: a sleeping loose clod may stay frozen only if a chain of
+   * sleeping neighbours connects it to the ground or to the carried load.
+   * Anything else is woken, so nothing is ever left hanging in the air.
+   */
+  private groundedSweep() {
+    const r = this.r,
+      tol = 0.75 * r,
+      mark = this.grounded,
+      stack = this.wakeStack;
+    let top = 0;
+    for (let k = 0; k < this.activeCount; k++) {
+      const i = this.active[k];
+      mark[i] = 0;
+      if (this.awake[i]) continue;
+      if (
+        this.held[i] ||
+        this.py[i] - r - this.host.surface(this.px[i], this.pz[i]) < tol
+      ) {
+        mark[i] = 1;
+        stack[top++] = i;
+      }
+    }
+    while (top > 0) {
+      const j = stack[--top],
+        y = this.py[j];
+      this.forNeighbours(this.px[j], y, this.pz[j], 2.2 * r, (k) => {
+        if (mark[k] || this.awake[k] || this.py[k] < y - 0.5 * r) return;
+        mark[k] = 1;
+        if (top < stack.length) stack[top++] = k;
+      });
+    }
+    for (let k = 0; k < this.activeCount; k++) {
+      const i = this.active[k];
+      if (!this.awake[i] && !mark[i]) this.wake(i);
     }
   }
   /** Return settled loose clods that rest on the ground to the grid. */

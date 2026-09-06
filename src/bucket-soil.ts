@@ -33,7 +33,7 @@ export class BucketSoil extends T.Group {
   constructor(texture: T.Texture | null) {
     super();
     const material = new T.MeshStandardMaterial({
-      color: 0x765135,
+      color: new T.Color().setHSL(0.075, 0.39, 0.245),
       roughness: 1,
       map: texture,
       side: T.DoubleSide,

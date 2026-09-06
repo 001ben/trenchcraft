@@ -59,9 +59,13 @@ export class View {
   private hydraulics?: Hydraulics;
   bucketSoil?: BucketSoil;
   /** Every physical clod, carried or loose, in one instanced draw. */
+  /** Same colour as freshly cut ground in the land surface, so earth never changes hue. */
   private clods = new T.InstancedMesh(
     clodGeometry(),
-    material(0x795033),
+    new T.MeshStandardMaterial({
+      color: new T.Color().setHSL(0.075, 0.39, 0.245),
+      roughness: 1,
+    }),
     SOIL.capacity,
   );
   private clodSeeds = new WeakMap<SoilClod, number>();

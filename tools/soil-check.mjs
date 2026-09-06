@@ -86,10 +86,15 @@ try {
     "carried clod volumes sum to the load",
   );
   const lifted = await phase("lift", { ry: 1, rx: -1 }, 70, cabSide);
+  // Cut earth the curl did not sweep in stays on the bank and stops counting.
+  assert.ok(
+    lifted.load >= scooped.load * 0.6,
+    `the curl swept in too little of the cut: ${scooped.load} -> ${lifted.load}`,
+  );
   const swung = await phase("swing", { lx: 1 }, 90, cabSide);
   assert.ok(
-    swung.load >= scooped.load * 0.85,
-    `carried load lost while lifting and swinging: ${scooped.load} -> ${swung.load}`,
+    swung.load >= lifted.load * 0.95,
+    `carried load lost while swinging: ${lifted.load} -> ${swung.load}`,
   );
   const opening = await phase(
     "dump",

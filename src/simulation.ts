@@ -61,6 +61,8 @@ export type SoilClod = {
   vz: number;
   volume: number;
   asleep?: boolean;
+  /** Cut but not yet swept into the bowl; counted as load until left behind. */
+  pending?: boolean;
 };
 export type ScoopCut = {
   x: number;
@@ -213,36 +215,94 @@ export class Simulation {
       ? this.ground[row * NX + col]
       : 0;
   }
-  /** Ground height interpolated between cell centres, the surface clods rest on. */
-  surface(x: number, z: number) {
-    const fx = clamp((x + (NX * CELL) / 2) / CELL - 0.5, 0, NX - 1.000001),
-      fz = clamp((z + (NZ * CELL) / 2) / CELL - 0.5, 0, NZ - 1.000001);
+  /** Height of the corner shared by up to four cells: the average the land mesh draws. */
+  private cornerHeight(cx: number, cz: number) {
+    let sum = 0,
+      n = 0;
+    for (let row = cz - 1; row <= cz; row++)
+      for (let col = cx - 1; col <= cx; col++) {
+        if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
+        sum += this.ground[row * NX + col];
+        n++;
+      }
+    return n ? sum / n : 0;
+  }
+  /**
+   * The surface clods rest on is the same fan of triangles the land mesh draws:
+   * each cell is four triangles from its centre to the shared corners, so a clod
+   * on a trench wall sits exactly on the visible ground.
+   */
+  private surfaceTriangle(x: number, z: number, out: Float64Array) {
+    const fx = clamp((x + (NX * CELL) / 2) / CELL, 0, NX - 1e-6),
+      fz = clamp((z + (NZ * CELL) / 2) / CELL, 0, NZ - 1e-6);
     const col = Math.floor(fx),
       row = Math.floor(fz),
-      tx = fx - col,
-      tz = fz - row,
-      i = row * NX + col,
-      g = this.ground;
-    const a = g[i] + (g[i + 1] - g[i]) * tx,
-      b = g[i + NX] + (g[i + NX + 1] - g[i + NX]) * tx;
-    return a + (b - a) * tz;
+      u = fx - col,
+      v = fz - row,
+      m = this.ground[row * NX + col],
+      h00 = this.cornerHeight(col, row),
+      h10 = this.cornerHeight(col + 1, row),
+      h01 = this.cornerHeight(col, row + 1),
+      h11 = this.cornerHeight(col + 1, row + 1);
+    // Triangle vertices in cell units: p0 and p1 on one edge, the centre at (0.5, 0.5).
+    let x0: number, z0: number, y0: number, x1: number, z1: number, y1: number;
+    if (v <= u && v <= 1 - u) {
+      x0 = 0;
+      z0 = 0;
+      y0 = h00;
+      x1 = 1;
+      z1 = 0;
+      y1 = h10;
+    } else if (u >= v && u >= 1 - v) {
+      x0 = 1;
+      z0 = 0;
+      y0 = h10;
+      x1 = 1;
+      z1 = 1;
+      y1 = h11;
+    } else if (v >= u && v >= 1 - u) {
+      x0 = 1;
+      z0 = 1;
+      y0 = h11;
+      x1 = 0;
+      z1 = 1;
+      y1 = h01;
+    } else {
+      x0 = 0;
+      z0 = 1;
+      y0 = h01;
+      x1 = 0;
+      z1 = 0;
+      y1 = h00;
+    }
+    // Plane through the three points; gradients in height per cell unit.
+    const ax = x1 - x0,
+      az = z1 - z0,
+      ay = y1 - y0,
+      bx = 0.5 - x0,
+      bz = 0.5 - z0,
+      by = m - y0;
+    const nx = az * by - ay * bz,
+      ny = ax * bz - az * bx,
+      nz = ay * bx - ax * by;
+    const inv = 1 / (ny || 1e-9);
+    const dx = -nx * inv,
+      dz = -nz * inv;
+    out[0] = y0 + (u - x0) * dx + (v - z0) * dz;
+    out[1] = dx / CELL;
+    out[2] = dz / CELL;
+  }
+  private tri = new Float64Array(3);
+  /** Visible ground height at a world position. */
+  surface(x: number, z: number) {
+    this.surfaceTriangle(x, z, this.tri);
+    return this.tri[0];
   }
   surfaceNormal(x: number, z: number, out: Float64Array) {
-    const fx = clamp((x + (NX * CELL) / 2) / CELL - 0.5, 0, NX - 1.000001),
-      fz = clamp((z + (NZ * CELL) / 2) / CELL - 0.5, 0, NZ - 1.000001);
-    const col = Math.floor(fx),
-      row = Math.floor(fz),
-      tx = fx - col,
-      tz = fz - row,
-      i = row * NX + col,
-      g = this.ground;
-    const dx =
-        ((g[i + 1] - g[i]) * (1 - tz) + (g[i + NX + 1] - g[i + NX]) * tz) /
-        CELL,
-      dz =
-        ((g[i + NX] - g[i]) * (1 - tx) + (g[i + NX + 1] - g[i + 1]) * tx) /
-        CELL;
-    const inv = 1 / Math.sqrt(dx * dx + 1 + dz * dz);
+    this.surfaceTriangle(x, z, this.tri);
+    const dx = this.tri[1],
+      dz = this.tri[2],
+      inv = 1 / Math.sqrt(dx * dx + 1 + dz * dz);
     out[0] = -dx * inv;
     out[1] = inv;
     out[2] = -dz * inv;
@@ -412,31 +472,35 @@ export class Simulation {
     }
     const n = Math.max(1, Math.round(volume / CLOD_VOLUME)),
       each = volume / n,
-      r = this.soil.r,
-      m = this.machine,
-      shell = this.soil.shell;
-    frameOf(m, this.frame);
-    void parcels;
+      r = this.soil.r;
+    let total = 0;
+    for (const p of parcels) total += p.volume;
     for (let k = 0; k < n; k++) {
-      // Next free resting slot: the bowl fills from the lip inward, layer by layer.
       const s = this.spawnIndex++;
-      shell.slot(this.held.length, this.local);
-      const x = this.local[0] + (((s * 0.7548776662) % 1) - 0.5) * 0.5 * r,
-        v = this.local[1] + 0.005,
-        u = this.local[2] + (((s * 0.5698402909) % 1) - 0.5) * 0.5 * r;
-      toWorld(this.frame, x, v, u, this.world);
+      let pick = ((s * 0.61803398875) % 1) * total,
+        cut = parcels[0];
+      for (const p of parcels) {
+        cut = p;
+        pick -= p.volume;
+        if (pick <= 0) break;
+      }
+      // The bank breaks up where the teeth passed: clods surface out of the cut
+      // column, spread through its depth, and the curling bowl has to sweep them in.
+      const depth = Math.max(0, cut.top - cut.bottom),
+        frac = (s * 0.3247179572) % 1;
       this.held.push({
-        x: this.world[0],
-        y: this.world[1],
-        z: this.world[2],
+        x: cut.x + (((s * 0.7548776662) % 1) - 0.5) * 0.18,
+        y: Math.min(cut.top - 0.3 * r, cut.bottom + r + frac * depth),
+        z: cut.z + (((s * 0.5698402909) % 1) - 0.5) * 0.18,
         vx: 0,
         vy: 0,
         vz: 0,
         volume: each,
         asleep: false,
+        pending: true,
       });
     }
-    this.soil.anchor(m);
+    this.soil.anchor(this.machine);
   }
   /** Earth stays in flight until it reaches the ground; that volume is saved too. */
   dump(point: { x: number; y: number; z: number }, dt: number) {
@@ -726,7 +790,8 @@ function validClods(list: unknown): list is SoilClod[] {
         Math.abs(p.vy) <= 25 &&
         p.volume > 0 &&
         p.volume <= CAPACITY &&
-        (p.asleep === undefined || typeof p.asleep === "boolean"),
+        (p.asleep === undefined || typeof p.asleep === "boolean") &&
+        (p.pending === undefined || typeof p.pending === "boolean"),
     )
   );
 }

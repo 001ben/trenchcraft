@@ -69,21 +69,24 @@ test("a stationary cutting lip removes nothing and a longer sweep removes propor
   assert.ok(Math.abs(long / short - 2) < 1e-5);
 });
 
-test("cut earth becomes carried clods whose volumes sum exactly to the load", () => {
+test("cut earth surfaces from the cut column and its clods sum exactly to the load", () => {
   const s = new Simulation();
-  const frame = makeFrame(),
-    local = new Float64Array(3);
   for (let i = 0; i < 300; i++) s.dig({ x: 0, y: -0.7, z: -3 }, 1 / 60);
   assert.ok(Math.abs(s.machine.load - CAPACITY) < 1e-6);
   assert.ok(Math.abs(heldVolume(s) - s.machine.load) < 1e-9);
-  assert.ok(s.held.length > 200, `${s.held.length} clods for a full bucket`);
-  frameOf(s.machine, frame);
+  assert.ok(s.held.length > 500, `${s.held.length} clods for a full bucket`);
   for (const clod of s.held) {
-    toLocal(frame, clod.x, clod.y, clod.z, local);
-    assert.ok(Math.abs(local[0]) < HALF_WIDTH, "clod within the cheeks");
     assert.ok(
-      local[2] > -0.2 && local[2] < TOOTH_U,
-      "clod between heel and lip",
+      clod.pending,
+      "cut earth waits at the bank until the bowl sweeps it in",
+    );
+    assert.ok(
+      Math.hypot(clod.x, clod.z + 3) < 0.65,
+      "clod surfaces where the teeth cut",
+    );
+    assert.ok(
+      clod.y > -0.9 && clod.y < 0.2,
+      "clod surfaces from the cut column",
     );
   }
   assert.equal(s.falling.length, 0);
@@ -97,14 +100,19 @@ test("a full bucket carries its clods through a lift and swing, and the load is 
     count = s.held.length;
   assert.ok(loaded > 0.008, `only ${loaded} loaded`);
   assert.ok(Math.abs(heldVolume(s) - loaded) < 1e-9);
-  run(s, { ry: 1 }, 100);
-  run(s, { lx: 1 }, 80);
+  run(s, { ry: 1, rx: -1 }, 70);
+  run(s, { lx: 1 }, 90);
   run(s, {}, 30);
+  // Cut earth that the curl did not sweep in stays on the bank; the rest rides along.
   assert.ok(
-    s.machine.load >= loaded * 0.9,
-    `lost ${loaded - s.machine.load} of ${loaded} while lifting and swinging`,
+    s.machine.load >= loaded * 0.6,
+    `only ${s.machine.load} of ${loaded} made it into the bowl and through the swing`,
   );
-  assert.ok(s.held.length >= count * 0.9);
+  assert.ok(s.held.length >= count * 0.6);
+  assert.ok(
+    s.held.every((c) => !c.pending),
+    "everything still counted as load is really in the bowl",
+  );
   assert.ok(Math.abs(volume(s)) < 1e-6, "soil volume drifted");
   const frame = makeFrame(),
     local = new Float64Array(3);
@@ -150,15 +158,17 @@ test("opening the bucket lets clods fall, land in the spoil and become ground", 
 
 test("carried clods spill over the lip when the bucket tilts too far", () => {
   const s = new Simulation();
-  for (let i = 0; i < 300; i++) s.dig({ x: 0, y: -0.7, z: -3 }, 1 / 60);
+  s.machine.load = CAPACITY;
+  s.reconcileLoad();
+  const v0 = volume(s);
   run(s, {}, 30);
   const full = s.machine.load;
-  assert.ok(full > CAPACITY * 0.95);
+  assert.ok(full > CAPACITY * 0.9, `bowl only kept ${full}`);
   // Tip forward well past level but not fully open: the heap slides, the bowl keeps some.
   run(s, { rx: 1 }, 45);
   run(s, {}, 120);
   assert.ok(s.machine.load < full * 0.98, "nothing spilled");
-  assert.ok(Math.abs(volume(s)) < 1e-6);
+  assert.ok(Math.abs(volume(s) - v0) < 1e-6);
 });
 
 test("version 3 saves round-trip clods and version 2 loads rest in the bowl", () => {
@@ -193,8 +203,8 @@ test("version 3 saves round-trip clods and version 2 loads rest in the bowl", ()
 
 test("physics keeps a full bucket and a landed pile within a frame budget", () => {
   const s = new Simulation();
-  for (let i = 0; i < 300; i++) s.dig({ x: 0, y: -0.7, z: -3 }, 1 / 60);
   s.machine.load = CAPACITY;
+  s.reconcileLoad();
   let worst = 0,
     total = 0;
   // Lift while curling back so the load rides level, then swing with it.
