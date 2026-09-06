@@ -77,6 +77,10 @@ The reference-guided visual pass and its source photographs are documented in [a
 
 Rebuild the model with Blender 5:
 
+The latest visual pass adds formed body panels, cooling louvres, graphite canopy, distinct enamel/rubber/steel materials, a continuously curved bucket shell, tapered teeth and instanced chevron track ribs. One generated environment supplies metal reflections without dynamic capture or post-processing. The GLB is 1.61 MB.
+
+`src/land-surface.ts` renders the authoritative 25 cm soil grid as a connected surface with shared corners, subtle irregular edges and smooth normals. A small mipmapped grain texture adds detail. Cell-center heights remain exact; edits upload only nearby vertices/normals. Grass stays removed after backfill. Buried box faces are gone, grass tufts and transient dirt are instanced, and the 64-clod simulation limit is unchanged. Run `node tools/terrain-benchmark.mjs after` for the repeatable busy-scene comparison documented in VERIFICATION.md.
+
 ```powershell
 & 'C:/Program Files/Blender Foundation/Blender 5.0/blender.exe' --background --python art/build_excavator.py
 ```

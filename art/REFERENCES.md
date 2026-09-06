@@ -1,5 +1,7 @@
 # Excavator modeling references
 
+The September 6 realism pass uses these same references for shaped rear castings and bonnet, access-panel seams, cooling louvres, dark canopy/frame and construction enamel. The scoop now has a continuously curved steel shell, thick cheeks, welded cutting lip, side wear plates and tapered teeth. Materials distinguish dull rubber, enamel, powder coating and reflective machined/worn steel. The original game proportions and pivot/contact contract are retained.
+
 The model is original Blender geometry, using photographs of the Kubota U17 as a visual reference:
 
 - [Kubota U17 brochure](https://www.kubotausa.com/docs/default-source/brochure-sheets/u17.pdf): cover photograph for the open canopy, compact rear housing, bent boom and protected hoses; bucket/quick-coupler photographs and side working-range diagrams for the rear-facing scoop and linkage.

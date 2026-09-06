@@ -1,9 +1,11 @@
 import * as T from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { LandSurface } from "./land-surface";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Hydraulics } from "./hydraulics";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   Simulation,
-  CELL,
   NX,
   NZ,
   cellPosition,
@@ -20,34 +22,37 @@ export class View {
   model = new T.Group();
   cab = false;
   overview = false;
-  terrain: T.InstancedMesh;
-  turf: T.InstancedMesh;
+  terrain: LandSurface;
   private grassBlades: T.InstancedMesh;
   private temp = new T.Object3D();
-  private color = new T.Color();
   private parts = new Map<string, T.Object3D>();
   private particles: {
-    mesh: T.Mesh;
+    position: T.Vector3;
     velocity: T.Vector3;
     life: number;
     start?: T.Vector3;
   }[] = [];
-  private dirt = material(0x845736);
+  private dustMesh = new T.InstancedMesh(
+    new T.IcosahedronGeometry(0.065, 1),
+    material(0x845736),
+    36,
+  );
+  private grassCells = new Map<number, number>();
   private track: T.InstancedMesh;
   private trackPhase = [0, 0];
   private lastHeading = 0;
   private hydraulics?: Hydraulics;
   private heap = new T.Mesh(
-    new T.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    new T.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2),
     material(0x67402a),
   );
   private lumps = new T.InstancedMesh(
-    new T.IcosahedronGeometry(1, 0),
+    new T.IcosahedronGeometry(1, 1),
     material(0x845333),
     16,
   );
   private fallingSoil = new T.InstancedMesh(
-    new T.IcosahedronGeometry(1, 0),
+    new T.IcosahedronGeometry(1, 1),
     material(0x795033),
     64,
   );
@@ -74,9 +79,15 @@ export class View {
     this.renderer.shadowMap.type = T.PCFSoftShadowMap;
     this.renderer.setClearColor(0xc5d8c6);
     this.renderer.toneMapping = T.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.3;
+    this.renderer.toneMappingExposure = 1.05;
+    const room = new RoomEnvironment();
+    const pmrem = new T.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(room, 0.04).texture;
+    this.scene.environmentIntensity = 0.4;
+    room.dispose();
+    pmrem.dispose();
     this.scene.fog = new T.Fog(0xc5d8c6, 28, 62);
-    this.scene.add(new T.HemisphereLight(0xe6f4ec, 0x857044, 2.6));
+    this.scene.add(new T.HemisphereLight(0xe6f4ec, 0x857044, 1.8));
     const sun = new T.DirectionalLight(0xffe5b2, 3.4);
     sun.position.set(-8, 16, 8);
     sun.castShadow = true;
@@ -92,20 +103,10 @@ export class View {
     sun.shadow.bias = -0.001;
     sun.shadow.normalBias = 0.035;
     this.scene.add(sun);
-    this.terrain = new T.InstancedMesh(
-      new T.BoxGeometry(CELL, 1, CELL),
-      material(0xffffff),
-      NX * NZ,
-    );
-    this.terrain.receiveShadow = true;
+    this.terrain = new LandSurface(sim);
     this.scene.add(this.terrain);
-    this.turf = new T.InstancedMesh(
-      new T.PlaneGeometry(CELL, CELL),
-      material(0xffffff),
-      NX * NZ,
-    );
-    this.turf.receiveShadow = true;
-    this.scene.add(this.turf);
+    for (const mesh of [this.heap, this.lumps, this.fallingSoil, this.dustMesh])
+      mesh.material.map = this.terrain.material.map;
     const bladeGeometry = new T.BufferGeometry();
     bladeGeometry.setAttribute(
       "position",
@@ -120,13 +121,19 @@ export class View {
     bladeGeometry.computeVertexNormals();
     const bladeMaterial = material(0x527338);
     bladeMaterial.side = T.DoubleSide;
+    for (let i = 0; i < NX * NZ; i++) {
+      const v = Math.sin(i * 127.1) * 43758.5453;
+      if (v - Math.floor(v) < 0.085)
+        this.grassCells.set(i, this.grassCells.size);
+    }
     this.grassBlades = new T.InstancedMesh(
       bladeGeometry,
       bladeMaterial,
-      NX * NZ,
+      this.grassCells.size,
     );
     this.scene.add(this.grassBlades);
     for (let i = 0; i < NX * NZ; i++) this.updateCell(i);
+    this.terrain.flush();
     const base = this.box(0, -2.1, 0, 18, 1, 20, 0x956144);
     base.receiveShadow = true;
     this.box(0, -2.75, 0, 18.1, 0.3, 20.1, 0x6b6555);
@@ -194,14 +201,21 @@ export class View {
     }
     this.label("SERVICE TRENCH", 0, 0.04, -8.7, 2.5);
     this.label("SPOIL HERE", 3.75, 0.04, -9.2, 2.1);
-    this.track = new T.InstancedMesh(
-      new T.BoxGeometry(0.46, 0.07, 0.14),
-      material(0x263d37),
-      72,
-    );
+    const shoe = new T.BoxGeometry(0.44, 0.055, 0.14);
+    const ribs = [-1, 1].map((side) => {
+      const rib = new T.BoxGeometry(0.21, 0.035, 0.045);
+      rib.rotateY(side * 0.28);
+      rib.translate(side * 0.1, 0.036, 0);
+      return rib;
+    });
+    const treadGeometry = mergeGeometries([shoe, ...ribs]);
+    for (const geometry of [shoe, ...ribs]) geometry.dispose();
+    this.track = new T.InstancedMesh(treadGeometry, material(0x242927), 72);
     this.track.castShadow = true;
     this.model.add(this.track);
-    this.scene.add(this.model, this.fallingSoil);
+    this.scene.add(this.model, this.fallingSoil, this.dustMesh);
+    this.dustMesh.count = 0;
+    this.dustMesh.frustumCulled = false;
     this.fallingSoil.castShadow = true;
     this.fallingSoil.count = 0;
     // Clods move independently; the initial empty instance bounds do not describe them.
@@ -288,25 +302,10 @@ export class View {
   updateCell(i: number) {
     const p = cellPosition(i),
       h = this.sim.ground[i];
-    this.temp.position.set(p.x, (h - 2) / 2, p.z);
-    this.temp.scale.set(1, 2 + h, 1);
-    this.temp.rotation.set(0, 0, 0);
-    this.temp.updateMatrix();
-    this.terrain.setMatrixAt(i, this.temp.matrix);
-    const variation = ((i * 17) % 13) / 450;
-    this.color.setHSL(h < -0.25 ? 0.065 : 0.075, 0.39, 0.25 + variation);
-    this.terrain.setColorAt(i, this.color);
-    // Turf is a real surface layer: a cut removes it, and backfill stays bare soil.
-    const lawn = this.sim.deepest[i] > -0.015 && h >= -0.015 && h < 0.02;
-    const yard = !(p.x > -6.8 && p.x < -3.7 && p.z < -6.35 && p.z > -9.35);
-    this.temp.position.set(p.x, h + 0.007, p.z);
-    this.temp.rotation.set(-Math.PI / 2, 0, 0);
-    this.temp.scale.setScalar(lawn && yard ? 1 : 0);
-    this.temp.updateMatrix();
-    this.turf.setMatrixAt(i, this.temp.matrix);
-    const patch = (Math.sin(p.x * 0.73) + Math.cos(p.z * 0.52)) * 0.012;
-    this.color.setHSL(0.255 + patch, 0.45, 0.16 + patch + variation * 0.2);
-    this.turf.setColorAt(i, this.color);
+    this.terrain.markCell(i);
+    const grassIndex = this.grassCells.get(i);
+    if (grassIndex === undefined) return;
+    const lawn = this.terrain.isGrass(i);
     const scatter = Math.sin(i * 127.1) * 43758.5453;
     const noise = scatter - Math.floor(scatter);
     this.temp.position.set(
@@ -315,11 +314,9 @@ export class View {
       p.z + Math.sin(i) * 0.07,
     );
     this.temp.rotation.set(0, i * 2.4, 0);
-    this.temp.scale.setScalar(
-      lawn && yard && noise < 0.085 ? 0.45 + noise * 4 : 0,
-    );
+    this.temp.scale.setScalar(lawn ? 0.45 + noise * 4 : 0);
     this.temp.updateMatrix();
-    this.grassBlades.setMatrixAt(i, this.temp.matrix);
+    this.grassBlades.setMatrixAt(grassIndex, this.temp.matrix);
   }
   render(dt: number, time: number) {
     const m = this.sim.machine;
@@ -346,13 +343,13 @@ export class View {
           radial = 0.22 * Math.sqrt(i / 16);
         this.temp.position.set(
           Math.cos(angle) * radial,
-          -0.07 + fraction * 0.2,
+          -0.085 +
+            (0.04 + fraction * 0.24) * Math.sqrt(1 - (radial / 0.3) ** 2),
           Math.sin(angle) * radial + 0.025,
         );
         this.temp.rotation.set(i, i * 0.7, 0);
-        this.temp.scale.setScalar(
-          fraction > i / 20 ? 0.045 + (i % 3) * 0.015 : 0,
-        );
+        const size = fraction > i / 20 ? 0.033 + (i % 3) * 0.009 : 0;
+        this.temp.scale.set(size, size * 0.45, size * 0.85);
         this.temp.updateMatrix();
         this.lumps.setMatrixAt(i, this.temp.matrix);
       }
@@ -364,10 +361,7 @@ export class View {
     this.hydraulics?.update();
     for (const i of this.sim.changed) this.updateCell(i);
     if (this.sim.changed.size) {
-      this.terrain.instanceMatrix.needsUpdate = true;
-      this.terrain.instanceColor!.needsUpdate = true;
-      this.turf.instanceMatrix.needsUpdate = true;
-      this.turf.instanceColor!.needsUpdate = true;
+      this.terrain.flush();
       this.grassBlades.instanceMatrix.needsUpdate = true;
       this.sim.changed.clear();
     }
@@ -427,25 +421,24 @@ export class View {
     this.sim.falling.forEach((p, i) => {
       this.temp.position.set(p.x, p.y, p.z);
       this.temp.rotation.set(time * 3 + i, i * 0.7, time + i);
-      this.temp.scale.setScalar(Math.cbrt(p.volume) * 0.75);
+      const size = Math.cbrt(p.volume) * 0.75;
+      this.temp.scale.set(size * (0.8 + (i % 3) * 0.15), size * 0.7, size);
       this.temp.updateMatrix();
       this.fallingSoil.setMatrixAt(i, this.temp.matrix);
     });
     this.fallingSoil.instanceMatrix.needsUpdate = true;
     for (const p of this.sim.dust.splice(0))
       if (this.particles.length < 36) {
-        const mesh = new T.Mesh(new T.IcosahedronGeometry(0.065, 0), this.dirt);
-        mesh.position.set(p.x, p.y + 0.12, p.z);
-        this.scene.add(mesh);
+        const position = new T.Vector3(p.x, p.y + 0.12, p.z);
         this.particles.push({
-          mesh,
+          position,
           velocity: new T.Vector3(
             (Math.random() - 0.5) * 1.2,
             p.dump ? -1 : 0.8,
             (Math.random() - 0.5) * 1.2,
           ),
           life: p.dump ? 0.45 : 0.32,
-          start: p.dump ? undefined : mesh.position.clone(),
+          start: p.dump ? undefined : position.clone(),
         });
       }
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -454,18 +447,25 @@ export class View {
       if (p.start && fill) {
         const t = Math.min(1, 1 - p.life / 0.32),
           destination = fill.getWorldPosition(new T.Vector3());
-        p.mesh.position.lerpVectors(p.start, destination, t);
-        p.mesh.position.y += Math.sin(t * Math.PI) * 0.15;
+        p.position.lerpVectors(p.start, destination, t);
+        p.position.y += Math.sin(t * Math.PI) * 0.15;
       } else {
         p.velocity.y -= dt * 5;
-        p.mesh.position.addScaledVector(p.velocity, dt);
+        p.position.addScaledVector(p.velocity, dt);
       }
       if (p.life <= 0) {
-        this.scene.remove(p.mesh);
-        p.mesh.geometry.dispose();
         this.particles.splice(i, 1);
       }
     }
+    this.dustMesh.count = this.particles.length;
+    for (let i = 0; i < this.particles.length; i++) {
+      this.temp.position.copy(this.particles[i].position);
+      this.temp.rotation.set(i, i * 0.7, time);
+      this.temp.scale.set(0.8, 0.65, 1);
+      this.temp.updateMatrix();
+      this.dustMesh.setMatrixAt(i, this.temp.matrix);
+    }
+    this.dustMesh.instanceMatrix.needsUpdate = true;
     const yaw = m.heading + m.swing,
       f = new T.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)),
       right = new T.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));

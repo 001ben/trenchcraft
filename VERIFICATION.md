@@ -1,5 +1,22 @@
 # Verification
 
+## September 6: smoother earth and more realistic machine
+
+All 14 deterministic tests pass: the existing twelve gameplay/conservation/control/save tests plus two new terrain checks. These prove that rendering does not mutate simulation heights, cell-center heights stay exact, and local normals match a complete Three.js recomputation, including plot corners. Backfill stays bare, an isolated cut uploads less than 1% of the normal buffer, and idle terrain uploads nothing. The physical browser scoop/discharge, travel, touch, save and responsive layout checks pass. Empty/partial/full bucket, side, front, cab, chase and phone screenshots were inspected. Production build passes with the existing Vite bundle-size advisory.
+
+`node tools/terrain-benchmark.mjs before` ran against the original model/renderer at 8256aa4, then `node tools/terrain-benchmark.mjs after` against this pass. Desktop Windows/Edge headless uses the same cameras, device scale factor 2 (game cap 1.6), a trench/spoil strip, 49 edited cells per frame, 64 airborne clods, dust and upper-carriage motion. Each samples 179 frames after a 31-frame warm-up. This exercises terrain updates and render submission, not the full digging simulation.
+
+| Viewport | Triangles before / after | Draw calls before / after | CPU p50 before / after | CPU p95 before / after |
+| --- | --- | --- | --- | --- |
+| 390 x 844 | 124,132 / 71,535 | 144 / 120 | 1.1 / 1.4 ms | 1.6 / 1.7 ms |
+| 1024 x 768 | 124,996 / 72,399 | 207 / 183 | 1.3 / 1.7 ms | 1.9 / 2.0 ms |
+
+The phone-sized scene submits about 42% fewer triangles and 17% fewer draw calls. Geometry allocations fall from 278 to 254; animated dust now shares one instanced mesh. The two additional textures are a 128 px grain map and a one-time reflection environment. The more detailed GLB grows from 1.03 MB to 1.61 MB while total scene geometry decreases substantially. DPR, shadow resolution and the 64-clod physics budget stay unchanged.
+
+Frame-interval p95 was 4.3 ms in both desktop samples. This reflects this host's high-refresh browser and is **not a phone FPS claim or a GPU timer measurement**. CPU submission is slightly higher in these short samples; the savings are primarily geometry and draw calls. Physical phone/iPad GPU and thermal testing remains outstanding. The smooth surface interpolates between the authoritative cells without adding a more expensive soil simulation.
+
+## Earlier checks
+
 Twelve deterministic tests cover all eight ISO directions, actual world-space boom/arm/swing/curl movement, the alternate pattern, neutral behavior, arm-driven scoop/dump, ground resistance, bucket capacity, soil conservation, off-plot and over-height dumping, trench scoring/backfill, track travel/pivot, simultaneous independent travel and attachment movement, corrupt-save rejection and save round trips. The gravity test releases the controls, saves/reloads airborne soil, and verifies it becomes a ground pile without losing volume. Earlier version 1 saves migrate to version 2.
 
 `node tools/browser-check.mjs` drives the actual game with keyboard inputs through scoop, lift, swing and discharge. It verifies saved bucket contents and a resulting mound, cab view, in-session pattern switching and ISO defaults on reload, track travel and two simultaneous touch pointers. It checks cancellation, phone portrait, landscape, tablet and small-phone layouts, then exercises reset cancellation/confirmation. Fresh entry and reload start in cab view and ISO, without a blocking menu. A physical scoop runs before ever opening the guide. Tab switching resumes quietly; an explicitly opened guide remains open. Screenshots are saved under ignored `.local/`.

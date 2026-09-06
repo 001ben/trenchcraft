@@ -49,18 +49,14 @@ try {
       );
     }
     const cell = 27 * 72 + 36;
-    const matrix = new THREE.Matrix4();
-    view.turf.getMatrixAt(cell, matrix);
-    const intact = matrix.elements[0] !== 0;
+    const intact = view.terrain.isGrass(cell);
     sim.dig({ x: 0.125, y: -0.5, z: -3.125 }, 0.3);
     view.render(0, 0);
-    view.turf.getMatrixAt(cell, matrix);
-    const cut = matrix.elements[0] === 0;
+    const cut = !view.terrain.isGrass(cell);
     sim.ground[cell] = 0;
     sim.changed.add(cell);
     view.render(0, 0);
-    view.turf.getMatrixAt(cell, matrix);
-    const backfillBare = matrix.elements[0] === 0;
+    const backfillBare = !view.terrain.isGrass(cell);
     timings.sort((a, b) => a - b);
     return {
       turf: { intact, cut, backfillBare },
