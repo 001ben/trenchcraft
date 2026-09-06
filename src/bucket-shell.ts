@@ -491,6 +491,39 @@ export class BucketShell {
     return this.wall(lz, ly, this.scratch) > -margin - PLATE / 2;
   }
   private scratch = new Float64Array(5);
+  /** A nearby steel face must push upward to support sleeping dirt. Being
+   * inside the bowl's volume alone is not contact with the bowl. */
+  supports(x: number, y: number, z: number, tolerance: number) {
+    const f = this.frame,
+      l = this.local,
+      reach = this.r + tolerance;
+    toLocal(f, x, y, z, l);
+    const lx = l[0],
+      ly = l[1],
+      lz = l[2];
+    if (
+      Math.abs(lx) > CHEEK_OUTER + reach ||
+      lz < -0.3 - reach ||
+      lz > TOOTH_U + reach ||
+      ly < -0.62 - reach ||
+      ly > BACK_V + 0.1 + reach
+    )
+      return false;
+    if (Math.abs(lx) <= CHEEK_OUTER) {
+      const w = this.scratch;
+      this.wall(lz, ly, w);
+      if (w[4] <= reach + PLATE / 2 && w[3] * f[7] + w[2] * f[10] > 0.2)
+        return true;
+    }
+    const q = this.q;
+    for (let i = 0; i <= this.cheeks.length; i++) {
+      const prism = i < this.cheeks.length ? this.cheeks[i] : this.lip;
+      prismQuery(prism, lz, ly, lx, q);
+      if (q.dist <= reach && q.nz * f[4] + q.ny * f[7] + q.nx * f[10] > 0.2)
+        return true;
+    }
+    return false;
+  }
   /**
    * Push one clod out of the plate, cheeks and lip it overlaps and apply Coulomb
    * friction against the wall's motion since the previous frame. Returns true

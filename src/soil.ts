@@ -371,8 +371,10 @@ export class Soil {
     this.updateSleep();
     this.transitions();
     this.absorb();
-    if (++this.sweepFrame % 15 === 0) {
-      if (this.pairsDirty) this.buildPairs();
+    if (this.sweepFrame++ % 6 === 0) {
+      // The cached collision pairs tolerate movement; support queries need the
+      // current positions, including after ground absorption removed a clod.
+      this.buildGrid();
       this.groundedSweep();
     }
     this.exportObjects();
@@ -503,13 +505,22 @@ export class Soil {
       x = this.px[j],
       y = this.py[j],
       z = this.pz[j];
-    if (y - r - this.host.surface(x, z) < 0.6 * r) return true;
-    if (this.held[j]) return true;
+    if (this.boundarySupports(j)) return true;
     let found = false;
     this.forNeighbours(x, y, z, 2.2 * r, (k) => {
-      if (k !== j && this.py[k] < y - 0.5 * r) found = true;
+      if (k !== j && !this.awake[k] && this.py[k] < y - 0.5 * r) found = true;
     });
     return found;
+  }
+  private boundarySupports(i: number) {
+    const x = this.px[i],
+      y = this.py[i],
+      z = this.pz[i],
+      tolerance = 0.2 * this.r;
+    return (
+      y - this.r - this.host.surface(x, z) < tolerance ||
+      this.shell.supports(x, y, z, tolerance)
+    );
   }
   private integrate(h: number) {
     const { px, py, pz, ppx, ppy, ppz, vx, vy, vz, awake, touching } = this;
@@ -778,8 +789,8 @@ export class Soil {
       const i = this.active[k];
       if (!awake[i]) continue;
       const v2 = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
-      if (v2 < thr) {
-        if (++still[i] >= SOIL.sleepFrames) this.sleep(i);
+      if (v2 < thr && this.touching[i]) {
+        if (++still[i] >= SOIL.sleepFrames && this.supported(i)) this.sleep(i);
       } else still[i] = 0;
       if (
         !this.held[i] &&
@@ -844,13 +855,11 @@ export class Soil {
   private grounded = new Uint8Array(SOIL.capacity);
   private sweepFrame = 0;
   /**
-   * Island check: a sleeping loose clod may stay frozen only if a chain of
-   * sleeping neighbours connects it to the ground or to the carried load.
-   * Anything else is woken, so nothing is ever left hanging in the air.
+   * Sleeping islands need a chain of contacts down to ground or an upward
+   * steel face. The held flag is bookkeeping, never a physical anchor.
    */
   private groundedSweep() {
     const r = this.r,
-      tol = 0.75 * r,
       mark = this.grounded,
       stack = this.wakeStack;
     let top = 0;
@@ -858,10 +867,7 @@ export class Soil {
       const i = this.active[k];
       mark[i] = 0;
       if (this.awake[i]) continue;
-      if (
-        this.held[i] ||
-        this.py[i] - r - this.host.surface(this.px[i], this.pz[i]) < tol
-      ) {
+      if (this.boundarySupports(i)) {
         mark[i] = 1;
         stack[top++] = i;
       }
@@ -870,7 +876,7 @@ export class Soil {
       const j = stack[--top],
         y = this.py[j];
       this.forNeighbours(this.px[j], y, this.pz[j], 2.2 * r, (k) => {
-        if (mark[k] || this.awake[k] || this.py[k] < y - 0.5 * r) return;
+        if (mark[k] || this.awake[k] || this.py[k] < y + 0.25 * r) return;
         mark[k] = 1;
         if (top < stack.length) stack[top++] = k;
       });

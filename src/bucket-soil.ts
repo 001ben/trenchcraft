@@ -102,6 +102,8 @@ export class BucketSoil extends T.Group {
     const cap = CLOD_RADIUS * 0.85;
     let volume = 0;
     for (const clod of sim.held) {
+      // Cut clods still at the bank are not a heap attached to the bucket.
+      if (clod.pending) continue;
       volume += clod.volume;
       toLocal(this.frame, clod.x, clod.y, clod.z, this.local);
       const col = Math.floor(((this.local[0] + WIDTH / 2) / WIDTH) * COLS),
@@ -140,7 +142,7 @@ export class BucketSoil extends T.Group {
     void dt;
     const cuts = sim.cuts.splice(0);
     this.measure(sim);
-    this.visible = sim.held.length > 0;
+    this.visible = this.bed.volume > 0;
     if (!this.visible) return;
     const positions = this.surface.geometry.getAttribute("position");
     for (let row = 0; row <= ROWS; row++)
