@@ -179,12 +179,23 @@ test("straight trench, off-line cuts and backfill affect the actual score", () =
 test("two track levers travel and pivot without changing attachment joints", () => {
   const s = new Simulation(),
     initial = { ...s.machine };
-  s.update({ ...neutral(), travel: true, ly: -1, ry: -1 }, 0.05);
+  s.update({ ...neutral(), leftTrack: 1, rightTrack: 1 }, 0.05);
   assert.ok(s.machine.z < initial.z);
   assert.equal(s.machine.swing, 0);
   assert.equal(s.machine.boom, initial.boom);
-  s.update({ ...neutral(), travel: true, ly: -1, ry: 1 }, 0.05);
+  s.update({ ...neutral(), leftTrack: 1, rightTrack: -1 }, 0.05);
   assert.ok(s.machine.heading < 0);
+});
+test("travel levers and digging joysticks work independently at the same time", () => {
+  const s = new Simulation(),
+    before = { ...s.machine };
+  s.update({ ...neutral(), leftTrack: 1, rightTrack: 1, ry: 1 }, 0.05);
+  assert.ok(s.machine.z < before.z);
+  assert.ok(s.machine.boom > before.boom);
+  const stopped = { ...s.machine };
+  s.update({ ...neutral(), rx: -1 }, 0.05);
+  assert.equal(s.machine.z, stopped.z);
+  assert.ok(s.machine.bucket > stopped.bucket);
 });
 test("invalid saves are rejected and valid terrain and pattern survive", () => {
   const s = new Simulation();

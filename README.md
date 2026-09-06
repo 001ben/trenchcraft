@@ -25,7 +25,7 @@ GitHub Actions runs the unit tests and builds with the `/trenchcraft/` base path
 
 ## Playing
 
-Every visit opens straight into **cab view**, **Dig** mode and **ISO controls**, with saved earthwork restored and no start menu. Switching tabs or losing focus pauses quietly; returning resumes play without opening the guide. An explicitly opened guide remains paused until you close it. Use **?** whenever you want the lesson, settings or a pause. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
+Every visit opens straight into **cab view** with **ISO controls**, with saved earthwork restored and no start menu. Switching tabs or losing focus pauses quietly; returning resumes play without opening the guide. An explicitly opened guide remains paused until you close it. Use **?** whenever you want the lesson, settings or a pause. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
 
 | Direction    | ISO left joystick | ISO right joystick |
 | ------------ | ----------------- | ------------------ |
@@ -36,7 +36,11 @@ Every visit opens straight into **cab view**, **Dig** mode and **ISO controls**,
 
 The guide offers **Alternate · boom on left**, which swaps the boom and arm axes while retaining swing on the left hand and curl on the right. Labels and the lesson change with the selected pattern for that visit; opening or reloading the game returns to ISO. ISO is the default; “universal” does not mean every real machine is configured identically. The mapping is based on [Kubota's U10-5 operator manual, printed pages 38–41](https://media.kubota.io/uploads/U10-Ops-Manual_LR.pdf).
 
-Tap **Drive** in the top bar. Drive mode gives each hand its own track's forward/reverse lever. Push both forward to travel; opposite directions pivot. Travel is relative to the tracks, even when the upper carriage is swung around. Tap **Dig** to return to attachments. The sticks are labelled Left track and Right track while driving. Cab/chase views are in the top bar; the guide also offers a plot overview and optional synthesized sound.
+The round joysticks always control the attachments. Two separate, spring-centred **travel levers** sit immediately inside the joysticks, within thumb reach on phones and tablets. Push both up to travel forward, pull both down to reverse, or move them in opposite directions to pivot. Releasing a lever stops that track. Track and attachment inputs can operate together; there is no Dig/Drive mode switch. This follows the separate left/right travel-lever arrangement in [Kubota's manual, printed pages 35–37](https://media.kubota.io/uploads/U10-Ops-Manual_LR.pdf).
+
+Keyboard travel uses **Q / Z** for the left track (forward/reverse), **E / C** for the right. WASD and arrows keep their digging functions. On a standard gamepad, the left/right bumpers drive their tracks forward and triggers reverse. Travel is relative to the tracks, even when the upper carriage is swung around.
+
+The permanent minimap is removed for this small plot. The guide still offers **Plot overview** when you want to see the full trench and spoil strip. Trench progress and bucket load/depth remain visible; detailed star, straightness and tidiness scores live in the guide.
 
 Lower the teeth against the soil, then curl and pull the arm in. Untouched ground resists further lowering; curling/crowding takes a bite. The bucket holds **0.22 m³**, with a visible soil mound and a percentage indicator. Lift it clear, swing toward the amber spoil strip and open it: soil falls from the cutting lip under gravity and builds a pile on impact. A tipped bucket continues emptying after you release the stick. Using several attachment movements together shares hydraulic speed, and a full bucket lifts slightly more slowly.
 
@@ -54,20 +58,20 @@ Backfilling reduces progress. Re-digging the same cells cannot erase earlier off
 
 ## Source map
 
-| File                               | Responsibility                                                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `src/simulation.ts`                | Joint kinematics, input pattern, terrain edits, volume, score and save validation                    |
-| `src/controls.ts`                  | Two independent captured pointers, keyboard and gamepad input                                        |
-| `src/view.ts`                      | Three.js plot, animated Blender joints and track shoes, ground instances, particles, cameras and map |
-| `src/hydraulics.ts`                | Cylinder/rod visuals connected to moving attachment pivots                                           |
-| `src/main.ts`                      | Game loop, minimal HUD, guide, sound and save lifecycle                                              |
-| `art/build_excavator.py`           | Original Blender model authoring and GLB export                                                      |
-| `art/mini-excavator.blend`         | Editable, posed source model                                                                         |
-| `public/models/mini-excavator.glb` | Game-ready articulated model                                                                         |
-| `tests/simulation.test.ts`         | Deterministic gameplay and conservation checks                                                       |
-| `tools/browser-check.mjs`          | Physical browser input, screenshots and touch checks (Edge)                                          |
-| `tools/model-check.mjs`            | Render/simulation joint agreement and a small timing sample                                          |
-| `tools/bucket-check.mjs`           | Empty/partial/full scoop and falling-soil close-ups; track animation direction checks                |
+| File                               | Responsibility                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `src/simulation.ts`                | Joint kinematics, input pattern, terrain edits, volume, score and save validation               |
+| `src/controls.ts`                  | Two independent captured pointers, keyboard and gamepad input                                   |
+| `src/view.ts`                      | Three.js plot, animated Blender joints and track shoes, ground instances, particles and cameras |
+| `src/hydraulics.ts`                | Cylinder/rod visuals connected to moving attachment pivots                                      |
+| `src/main.ts`                      | Game loop, minimal HUD, guide, sound and save lifecycle                                         |
+| `art/build_excavator.py`           | Original Blender model authoring and GLB export                                                 |
+| `art/mini-excavator.blend`         | Editable, posed source model                                                                    |
+| `public/models/mini-excavator.glb` | Game-ready articulated model                                                                    |
+| `tests/simulation.test.ts`         | Deterministic gameplay and conservation checks                                                  |
+| `tools/browser-check.mjs`          | Physical browser input, screenshots and touch checks (Edge)                                     |
+| `tools/model-check.mjs`            | Render/simulation joint agreement and a small timing sample                                     |
+| `tools/bucket-check.mjs`           | Empty/partial/full scoop and falling-soil close-ups; track animation direction checks           |
 
 The reference-guided visual pass and its source photographs are documented in [art/REFERENCES.md](art/REFERENCES.md). The body, canopy, tapered boom, hoses, track details and animated bucket rocker follow those references while retaining the established digging reach.
 

@@ -17,14 +17,16 @@ export type Controls = {
   ly: number;
   rx: number;
   ry: number;
-  travel: boolean;
+  leftTrack: number;
+  rightTrack: number;
 };
 export const neutral = (): Controls => ({
   lx: 0,
   ly: 0,
   rx: 0,
   ry: 0,
-  travel: false,
+  leftTrack: 0,
+  rightTrack: 0,
 });
 export const clamp = (x: number, a: number, b: number) =>
   Math.max(a, Math.min(b, x));
@@ -251,10 +253,10 @@ export class Simulation {
     const m = this.machine;
     this.fall(dt);
     this.resistance = 0;
-    if (c.travel) {
+    if (c.leftTrack || c.rightTrack) {
       // Two track levers: forward/reverse per side, independent of upper-body swing.
-      const left = -c.ly,
-        right = -c.ry;
+      const left = clamp(c.leftTrack, -1, 1),
+        right = clamp(c.rightTrack, -1, 1);
       m.heading += (right - left) * dt * 0.65;
       m.x = clamp(
         m.x - Math.sin(m.heading) * (left + right) * dt * 0.55,
@@ -268,8 +270,7 @@ export class Simulation {
       );
       if (Math.abs(left) + Math.abs(right) > 0.1)
         this.lastAction =
-          "Tracks mode · each stick drives one track. Switch back to Dig when lined up.";
-      return;
+          "Travel levers move the tracks. The joysticks still control the arm.";
     }
     const a = axes(c, this.pattern),
       before = { ...m };

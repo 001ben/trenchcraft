@@ -7,8 +7,6 @@ import {
   NX,
   NZ,
   cellPosition,
-  spoil,
-  target,
   tooth,
   CAPACITY,
   ARM,
@@ -497,51 +495,5 @@ export class View {
     this.camera.position.lerp(eye, dt ? 1 - Math.exp(-dt * 7) : 1);
     this.camera.lookAt(look);
     this.renderer.render(this.scene, this.camera);
-  }
-  minimap(canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext("2d")!,
-      w = canvas.width,
-      h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#d7cfac";
-    ctx.fillRect(0, 0, w, h);
-    const sx = w / (NX * CELL),
-      sz = h / (NZ * CELL);
-    for (let i = 0; i < NX * NZ; i++) {
-      const p = cellPosition(i);
-      if (
-        target(p.x, p.z) ||
-        this.sim.ground[i] < -0.05 ||
-        this.sim.ground[i] > 0.05 ||
-        spoil(p.x, p.z)
-      ) {
-        ctx.fillStyle =
-          this.sim.ground[i] < -0.05
-            ? "#5c796b"
-            : this.sim.ground[i] > 0.05
-              ? "#a76f45"
-              : target(p.x, p.z)
-                ? "#fff8df"
-                : "#d9a761";
-        ctx.fillRect(
-          (p.x + 9) * sx,
-          (p.z + 10) * sz,
-          Math.ceil(CELL * sx),
-          Math.ceil(CELL * sz),
-        );
-      }
-    }
-    const m = this.sim.machine;
-    ctx.save();
-    ctx.translate((m.x + 9) * sx, (m.z + 10) * sz);
-    ctx.rotate(-m.heading - m.swing);
-    ctx.fillStyle = "#263f35";
-    ctx.beginPath();
-    ctx.moveTo(0, -7);
-    ctx.lineTo(-5, 5);
-    ctx.lineTo(5, 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
   }
 }

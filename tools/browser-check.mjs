@@ -19,7 +19,8 @@ try {
     "Chase view",
     "starts in cab view",
   );
-  assert.equal(await page.locator("#dig").getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#dig, #travel, #map").count(), 0);
+  assert.equal(await page.locator(".track-control").count(), 2);
   const cover = await browser.newPage();
   await cover.bringToFront();
   await page.bringToFront();
@@ -97,13 +98,12 @@ try {
     () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
   );
   await page.locator("#start").click();
-  await page.locator("#travel").click();
-  assert.equal(await page.locator("#left-stick .north").innerText(), "Forward");
-  await page.keyboard.down("KeyW");
-  await page.keyboard.down("ArrowUp");
+  assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
+  await page.keyboard.down("KeyQ");
+  await page.keyboard.down("KeyE");
   await page.waitForTimeout(900);
-  await page.keyboard.up("KeyW");
-  await page.keyboard.up("ArrowUp");
+  await page.keyboard.up("KeyQ");
+  await page.keyboard.up("KeyE");
   await page.locator("#guide").click();
   const afterDrive = await page.evaluate(
     () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
@@ -115,7 +115,6 @@ try {
   assert.equal(afterDrive.boom, beforeDrive.boom);
   assert.equal(afterDrive.stick, beforeDrive.stick);
   await page.locator("#start").click();
-  await page.locator("#dig").click();
   assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -154,6 +153,40 @@ try {
     touchPoints: [],
   });
   assert.equal(await mobile.locator(".joystick.active").count(), 0);
+  await mobile.locator("#guide").click();
+  const touchBefore = await mobile.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
+  await mobile.locator("#start").click();
+  const tl = await mobile.locator("#left-track").boundingBox(),
+    tr = await mobile.locator("#right-track").boundingBox();
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [p(3, tl, 0, -30), p(4, tr, 0, -30)],
+  });
+  await mobile.waitForTimeout(500);
+  assert.equal(await mobile.locator(".track-control.active").count(), 2);
+  await mobile.screenshot({ path: ".local/phone-travel.png" });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+  assert.equal(await mobile.locator(".track-control.active").count(), 0);
+  assert.equal(
+    await mobile.locator("#left-track").getAttribute("aria-valuenow"),
+    "0",
+  );
+  await mobile.locator("#guide").click();
+  const touchAfter = await mobile.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
+  assert.ok(
+    touchAfter.z < touchBefore.z - 0.2,
+    "both touch travel levers move the chassis",
+  );
+  assert.equal(touchAfter.boom, touchBefore.boom);
+  assert.equal(touchAfter.stick, touchBefore.stick);
+  await mobile.locator("#start").click();
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 844, height: 390 },
@@ -162,6 +195,32 @@ try {
   ]) {
     await mobile.setViewportSize(viewport);
     await mobile.waitForTimeout(400);
+    const bounds = await mobile
+      .locator(".joystick, .track-control")
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        }),
+      );
+    for (const [i, a] of bounds.entries()) {
+      assert.ok(
+        a.w >= 44 &&
+          a.h >= 44 &&
+          a.x >= 0 &&
+          a.x + a.w <= viewport.width + 0.1 &&
+          a.y + a.h <= viewport.height + 0.1,
+        "thumb controls remain within the viewport",
+      );
+      for (const b of bounds.slice(i + 1))
+        assert.ok(
+          a.x + a.w <= b.x + 0.1 ||
+            b.x + b.w <= a.x + 0.1 ||
+            a.y + a.h <= b.y + 0.1 ||
+            b.y + b.h <= a.y + 0.1,
+          "thumb controls must not overlap",
+        );
+    }
     assert.equal(
       await mobile.evaluate(
         () => document.documentElement.scrollWidth > innerWidth,

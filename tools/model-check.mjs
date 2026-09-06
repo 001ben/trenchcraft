@@ -26,7 +26,10 @@ try {
       sim.machine.bucket = -0.4 + i * 0.02;
       await new Promise(requestAnimationFrame);
       const start = performance.now();
-      sim.update({ lx: 0, ly: 0, rx: 0, ry: 0, travel: false }, 1 / 60);
+      sim.update(
+        { lx: 0, ly: 0, rx: 0, ry: 0, leftTrack: 0, rightTrack: 0 },
+        1 / 60,
+      );
       view.render(1 / 60, i / 60);
       for (const [j, arm] of view.hydraulics.arms.entries())
         linkError = Math.max(

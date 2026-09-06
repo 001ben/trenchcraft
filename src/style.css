@@ -7,17 +7,6 @@
   --ink: #294638;
   --gold: #efb554;
 }
-.mode-switch {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: #fff7dfa8;
-  border-radius: 12px;
-}
-.mode-switch button {
-  border: 0;
-  min-width: 44px;
-}
 @media (max-width: 380px) {
   .brand {
     font-size: 13px !important;
@@ -161,28 +150,6 @@ button[aria-pressed="true"] {
   grid-column: 1/-1;
   font-size: 10px;
   color: #6c775f;
-}
-.map {
-  position: absolute;
-  right: 24px;
-  top: 95px;
-  padding: 8px;
-  background: #fff7dfeb;
-  border-radius: 12px;
-  pointer-events: none;
-}
-.map canvas {
-  width: 108px;
-  height: 120px;
-  display: block;
-  border-radius: 5px;
-}
-.map span {
-  display: block;
-  font-size: 7px;
-  letter-spacing: 1px;
-  text-align: center;
-  padding-top: 7px;
 }
 .hint {
   position: absolute;
@@ -346,27 +313,6 @@ footer {
   max-width: 37px;
   text-align: center;
 }
-.quality {
-  align-self: flex-end;
-  text-align: center;
-  margin-bottom: 18px;
-  pointer-events: none;
-}
-.quality span {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 2px;
-}
-.quality strong {
-  display: block;
-  font-size: 26px;
-  letter-spacing: 8px;
-  color: #805c2c;
-  margin: 7px 0;
-}
-.quality small {
-  font-size: 11px;
-}
 dialog {
   border: 0;
   border-radius: 22px;
@@ -497,18 +443,6 @@ select {
   #progress {
     font-size: 23px;
   }
-  .map {
-    right: 12px;
-    top: 75px;
-    padding: 5px;
-  }
-  .map canvas {
-    width: 66px;
-    height: 74px;
-  }
-  .map span {
-    display: none;
-  }
   footer {
     left: 12px;
     right: 12px;
@@ -548,24 +482,6 @@ select {
   }
   .hand-title small {
     display: none;
-  }
-  .quality {
-    position: absolute;
-    left: 50%;
-    bottom: 184px;
-    transform: translateX(-50%);
-    width: 270px;
-    margin: 0;
-  }
-  .quality strong {
-    font-size: 20px;
-    margin: 4px 0;
-  }
-  .quality span {
-    font-size: 8px;
-  }
-  .quality small {
-    font-size: 9px;
   }
   .bucket-status {
     bottom: 253px;
@@ -610,18 +526,6 @@ select {
   .job small {
     font-size: 9px;
   }
-  .map {
-    top: 63px;
-    right: 14px;
-    padding: 5px;
-  }
-  .map canvas {
-    width: 61px;
-    height: 68px;
-  }
-  .map span {
-    display: none;
-  }
   footer {
     bottom: max(8px, env(safe-area-inset-bottom));
     left: max(16px, env(safe-area-inset-left));
@@ -661,22 +565,6 @@ select {
     left: calc(50% - 19px);
     top: calc(50% - 19px);
   }
-  .quality {
-    position: static;
-    transform: none;
-    width: auto;
-    margin: 0 0 10px;
-  }
-  .quality strong {
-    font-size: 20px;
-    margin: 3px;
-  }
-  .quality small {
-    font-size: 9px;
-  }
-  .quality span {
-    font-size: 8px;
-  }
   .bucket-status {
     bottom: 85px;
     width: 130px;
@@ -701,9 +589,6 @@ select {
 }
 /* Keep the bucket readout out of the working area on narrow screens. */
 @media (max-width: 700px) and (min-height: 601px) {
-  .quality {
-    display: none;
-  }
   .bucket-status {
     top: 178px;
     bottom: auto;
@@ -737,13 +622,234 @@ select {
   }
 }
 @media (max-height: 600px) {
-  .quality {
-    display: none;
-  }
   .bucket-status {
     bottom: 12px;
   }
   .hint {
     bottom: 81px;
   }
+}
+
+/* Dedicated travel levers stay between the two digging joysticks. */
+.travel-console {
+  pointer-events: auto;
+  width: 112px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.travel-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+}
+.travel-levers {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.track-control {
+  width: 48px;
+  height: 138px;
+  position: relative;
+  border: 1px solid #fff6deb0;
+  border-radius: 17px;
+  background: linear-gradient(90deg, #fff6decc, #e1dfbfdd, #fff6decc);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: ns-resize;
+}
+.track-control::before {
+  content: "";
+  position: absolute;
+  width: 4px;
+  left: calc(50% - 2px);
+  top: 19%;
+  bottom: 19%;
+  background: #52694855;
+  border-radius: 3px;
+}
+.track-control:focus-visible {
+  outline: 3px solid #e19b3f;
+  outline-offset: 3px;
+}
+.track-control.active {
+  background: #dce7c7ef;
+  border-color: #507862;
+}
+.track-forward,
+.track-reverse {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font-size: 17px;
+  pointer-events: none;
+}
+.track-forward {
+  top: 7px;
+}
+.track-reverse {
+  bottom: 7px;
+}
+.track-knob {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: calc(50% - 13px);
+  height: 26px;
+  border-radius: 7px;
+  background: repeating-linear-gradient(0deg, #365845 0 4px, #51755b 5px 6px);
+  box-shadow: 0 3px 7px #213c3440;
+  pointer-events: none;
+}
+.track-name {
+  display: block;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+.track-column kbd {
+  display: block;
+  font: 9px inherit;
+  opacity: 0.65;
+  margin-top: 3px;
+}
+.quality {
+  margin: 16px 0;
+  text-align: left;
+}
+.quality span,
+.quality small {
+  display: block;
+  font-size: 11px;
+}
+.quality strong {
+  display: block;
+  font-size: 24px;
+  color: #805c2c;
+  letter-spacing: 6px;
+  margin: 4px 0;
+}
+.bucket-status {
+  top: 95px;
+  right: 24px;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  background: #fff7dfe8;
+  padding: 12px;
+  border-radius: 12px;
+  width: 180px;
+}
+@media (max-width: 700px) {
+  .joystick {
+    width: clamp(120px, calc((100vw - 136px) / 2), 148px);
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .travel-console {
+    width: 96px;
+  }
+  .travel-levers {
+    gap: 8px;
+  }
+  .track-control {
+    width: 44px;
+    height: 108px;
+  }
+  .travel-title {
+    font-size: 8px;
+    margin-bottom: 6px;
+  }
+  .track-column kbd {
+    display: none;
+  }
+}
+@media (max-width: 700px) and (min-height: 601px) {
+  .bucket-status {
+    top: 178px;
+    left: 12px;
+    right: auto;
+    width: 210px;
+    padding: 8px 10px;
+  }
+}
+@media (max-height: 600px) {
+  .track-control {
+    height: 108px;
+  }
+  .travel-console {
+    width: 100px;
+  }
+  .track-column kbd {
+    display: none;
+  }
+  .bucket-status {
+    top: 63px;
+    right: 14px;
+    bottom: auto;
+    left: auto;
+    width: 155px;
+    padding: 9px;
+  }
+  .hint {
+    bottom: 170px;
+  }
+}
+
+/* Keep each travel lever beside its own joystick on wide phones and tablets too. */
+footer {
+  --stick-size: 214px;
+  --travel-gap: 12px;
+}
+.travel-console {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  pointer-events: none;
+}
+.travel-title {
+  display: none;
+}
+.travel-levers {
+  display: contents;
+}
+.track-column {
+  position: absolute;
+  bottom: 0;
+  width: 48px;
+  pointer-events: auto;
+}
+.track-column:first-child {
+  left: calc(var(--stick-size) + var(--travel-gap));
+}
+.track-column:last-child {
+  right: calc(var(--stick-size) + var(--travel-gap));
+}
+.track-name {
+  font-size: 7px;
+  letter-spacing: 0.4px;
+}
+@media (max-width: 700px) {
+  footer {
+    --stick-size: clamp(120px, calc((100vw - 136px) / 2), 148px);
+    --travel-gap: clamp(0px, calc((100vw - 360px) / 4), 8px);
+  }
+  .track-column {
+    width: 44px;
+  }
+}
+@media (min-width: 701px) and (max-height: 600px) {
+  footer {
+    --stick-size: 148px;
+  }
+}
+
+.track-name {
+  min-height: 18px;
+  line-height: 1.2;
+  display: grid;
+  place-items: center;
 }

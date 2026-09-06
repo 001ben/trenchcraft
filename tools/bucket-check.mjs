@@ -62,11 +62,11 @@ try {
     sim.machine.heading = 0;
     view.render(0, 0);
     const before = [...view.trackPhase];
-    sim.update({ ...neutral(), travel: true, ly: -1, ry: -1 }, 0.05);
+    sim.update({ ...neutral(), leftTrack: 1, rightTrack: 1 }, 0.05);
     view.render(0, 0);
     const forward = view.trackPhase.map((v, i) => v - before[i]);
     const previous = [...view.trackPhase];
-    sim.update({ ...neutral(), travel: true, ly: -1, ry: 1 }, 0.05);
+    sim.update({ ...neutral(), leftTrack: 1, rightTrack: -1 }, 0.05);
     view.render(0, 0);
     return { forward, pivot: view.trackPhase.map((v, i) => v - previous[i]) };
   });
