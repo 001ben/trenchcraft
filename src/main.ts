@@ -12,8 +12,8 @@ let sim = new Simulation(parseSave(stored)),
   travel = false;
 const app = document.querySelector<HTMLElement>("#app")!;
 const stick = (id: string, title: string, keys: string) =>
-  `<section class="hand"><div class="hand-title">${title}<small>${keys}</small></div><div id="${id}" class="joystick" aria-label="${title} virtual joystick"><span class="north"></span><span class="west"></span><span class="east"></span><span class="south"></span><i class="cross horizontal"></i><i class="cross vertical"></i><b class="knob"></b></div></section>`;
-app.innerHTML = `<canvas id="world" aria-label="Excavator practice plot"></canvas><header><div class="brand"><span class="brand-icon">▰</span><div>TRENCHCRAFT<small>A LITTLE EARTHWORK</small></div></div><nav><button id="travel" aria-pressed="false">Dig mode</button><button id="camera">Cab view</button><button id="guide" aria-label="Open guide and pause">?</button></nav></header>
+  `<section class="hand"><div class="hand-title"><span class="hand-name">${title}</span><small>${keys}</small></div><div id="${id}" class="joystick" aria-label="${title} virtual joystick"><span class="north"></span><span class="west"></span><span class="east"></span><span class="south"></span><i class="cross horizontal"></i><i class="cross vertical"></i><b class="knob"></b></div></section>`;
+app.innerHTML = `<canvas id="world" aria-label="Excavator practice plot"></canvas><header><div class="brand"><span class="brand-icon">▰</span><div>TRENCHCRAFT<small>A LITTLE EARTHWORK</small></div></div><nav><div class="mode-switch" role="group" aria-label="Operating mode"><button id="dig" aria-pressed="true">Dig</button><button id="travel" aria-pressed="false">Drive</button></div><button id="camera">Cab view</button><button id="guide" aria-label="Open guide and pause">?</button></nav></header>
 <section class="job"><div><span class="eyebrow">01 / WILLOW LANE</span><strong>The service trench</strong></div><span id="progress">0%</span><div class="meter"><i id="progress-fill"></i></div><small id="job-details">6 m long · 60 cm deep · follow the chalk</small></section>
 <aside class="map"><canvas id="map" width="144" height="160" aria-label="Plot map, trench in cream, spoil area in amber"></canvas><span>YOUR PRACTICE PLOT</span></aside>
 <div class="hint" id="hint"></div><div class="bucket-status"><span id="load">BUCKET EMPTY</span><i><b id="load-fill"></b></i><small id="depth">Ready to dig</small></div>
@@ -66,8 +66,11 @@ function labels() {
   $("pattern-tag").textContent = travel
     ? "TWO TRACK LEVERS"
     : sim.pattern.toUpperCase() + " CONTROLS";
-  $("travel").textContent = travel ? "Tracks mode" : "Dig mode";
   $("travel").setAttribute("aria-pressed", String(travel));
+  $("dig").setAttribute("aria-pressed", String(!travel));
+  document.querySelectorAll(".hand-name").forEach((label, i) => {
+    label.textContent = (i ? "RIGHT " : "LEFT ") + (travel ? "TRACK" : "HAND");
+  });
 }
 function pause() {
   running = false;
@@ -99,7 +102,12 @@ $("sound").onclick = () => {
   $("sound").textContent = sound ? "Sound on" : "Sound off";
 };
 $("travel").onclick = () => {
-  travel = !travel;
+  travel = true;
+  input.clear();
+  labels();
+};
+$("dig").onclick = () => {
+  travel = false;
   input.clear();
   labels();
 };
@@ -173,7 +181,9 @@ function hud() {
     s.progress > 0
       ? `60 cm target · ${Math.round(s.straightness * 100)}% on line · ${Math.round(s.tidiness * 100)}% tidy`
       : "6 m long · 60 cm deep · follow the chalk";
-  $("hint").textContent = sim.lastAction;
+  $("hint").textContent = travel
+    ? "Both sticks ↑ to drive · ↓ to reverse · opposite directions to turn. Tap Dig for the arm."
+    : sim.lastAction;
   view.minimap($<HTMLCanvasElement>("map"));
   if (s.stars === 3 && !completed) {
     completed = true;
@@ -213,7 +223,9 @@ view
   .load()
   .then(() => {
     $("loading").hidden = true;
-    pause();
+    running = true;
+    last = performance.now();
+    hud();
     requestAnimationFrame(frame);
   })
   .catch((e) => {

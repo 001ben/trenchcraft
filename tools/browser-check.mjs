@@ -10,7 +10,9 @@ try {
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("http://127.0.0.1:5174/", { waitUntil: "networkidle" });
-  await page.locator("#start").click();
+  await page.locator("#loading").waitFor({ state: "hidden" });
+  assert.equal(await page.locator("#panel").isVisible(), false);
+  assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
   await page.screenshot({ path: ".local/desktop.png" });
   await page.keyboard.down("ArrowUp");
   await page.waitForTimeout(530);
@@ -61,7 +63,35 @@ try {
     "Boom down",
   );
   await page.reload({ waitUntil: "networkidle" });
+  await page.locator("#loading").waitFor({ state: "hidden" });
+  assert.equal(
+    await page.locator("#left-stick .north").innerText(),
+    "Boom down",
+  );
+  await page.locator("#guide").click();
+  const beforeDrive = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
   await page.locator("#start").click();
+  await page.locator("#travel").click();
+  assert.equal(await page.locator("#left-stick .north").innerText(), "Forward");
+  await page.keyboard.down("KeyW");
+  await page.keyboard.down("ArrowUp");
+  await page.waitForTimeout(900);
+  await page.keyboard.up("KeyW");
+  await page.keyboard.up("ArrowUp");
+  await page.locator("#guide").click();
+  const afterDrive = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
+  assert.ok(
+    afterDrive.z < beforeDrive.z - 0.5,
+    "both track levers physically drive forward",
+  );
+  assert.equal(afterDrive.boom, beforeDrive.boom);
+  assert.equal(afterDrive.stick, beforeDrive.stick);
+  await page.locator("#start").click();
+  await page.locator("#dig").click();
   assert.equal(
     await page.locator("#left-stick .north").innerText(),
     "Boom down",
@@ -73,7 +103,8 @@ try {
   });
   mobile.on("pageerror", (e) => errors.push(e.message));
   await mobile.goto("http://127.0.0.1:5174/", { waitUntil: "networkidle" });
-  await mobile.locator("#start").click();
+  await mobile.locator("#loading").waitFor({ state: "hidden" });
+  assert.equal(await mobile.locator("#panel").isVisible(), false);
   const cdp = await mobile.context().newCDPSession(mobile);
   const l = await mobile.locator("#left-stick").boundingBox(),
     r = await mobile.locator("#right-stick").boundingBox();

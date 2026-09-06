@@ -23,7 +23,7 @@ This is a separate local Git repository, with no GitHub remote or public deploym
 
 ## Playing
 
-Start in **Dig mode**. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
+The plot opens straight into **Dig** with ISO as the fresh-game default; there is no start menu. Use **?** whenever you want the lesson, settings or a pause. Drag either joystick from its centre, or use WASD for the left hand and arrow keys for the right hand. Both sticks can move together. Releasing a stick stops its input. Touch cancellation, resizing, tab hiding and losing focus clear active inputs. A connected gamepad uses axes 0–3 with a dead zone.
 
 | Direction    | ISO left joystick | ISO right joystick |
 | ------------ | ----------------- | ------------------ |
@@ -34,9 +34,11 @@ Start in **Dig mode**. Drag either joystick from its centre, or use WASD for the
 
 The guide offers **Alternate · boom on left**, which swaps the boom and arm axes while retaining swing on the left hand and curl on the right. Labels and the lesson change with the selected pattern. ISO is the default; “universal” does not mean every real machine is configured identically. The mapping is based on [Kubota's U10-5 operator manual, printed pages 38–41](https://media.kubota.io/uploads/U10-Ops-Manual_LR.pdf).
 
-**Tracks mode** gives each hand its own track's forward/reverse lever. Push both forward to travel; opposite directions pivot. Travel is relative to the tracks, even when the upper carriage is swung around. Switch back to Dig mode for attachments. Cab/chase views are in the top bar; the guide also offers a plot overview and optional synthesized sound.
+Tap **Drive** in the top bar. Drive mode gives each hand its own track's forward/reverse lever. Push both forward to travel; opposite directions pivot. Travel is relative to the tracks, even when the upper carriage is swung around. Tap **Dig** to return to attachments. The sticks are labelled Left track and Right track while driving. Cab/chase views are in the top bar; the guide also offers a plot overview and optional synthesized sound.
 
 Lower the teeth into the soil, then curl and pull the arm in. The bucket holds **0.22 m³**. Lift it clear, swing toward the amber spoil strip and open it to deposit its contents. The dashed cream line marks a **6 m × 1 m** practice trench with a **0.6 m** target depth. The cutting footprint is narrower than the trench, so adjacent bites are needed. Move the tracks to reach the full length.
+
+The fenced block starts as a grassy yard with trees, shrubs and a small shed. Grass and tufts disappear at the cutting point to reveal brown soil. Backfilled cuts stay bare; a fresh-plot reset restores the lawn.
 
 Stars reward actual earthwork:
 

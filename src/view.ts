@@ -21,6 +21,8 @@ export class View {
   cab = false;
   overview = false;
   terrain: T.InstancedMesh;
+  turf: T.InstancedMesh;
+  private grassBlades: T.InstancedMesh;
   private temp = new T.Object3D();
   private color = new T.Color();
   private parts = new Map<string, T.Object3D>();
@@ -76,10 +78,37 @@ export class View {
     );
     this.terrain.receiveShadow = true;
     this.scene.add(this.terrain);
+    this.turf = new T.InstancedMesh(
+      new T.PlaneGeometry(CELL, CELL),
+      material(0xffffff),
+      NX * NZ,
+    );
+    this.turf.receiveShadow = true;
+    this.scene.add(this.turf);
+    const bladeGeometry = new T.BufferGeometry();
+    bladeGeometry.setAttribute(
+      "position",
+      new T.Float32BufferAttribute(
+        [
+          -0.065, 0, 0, -0.02, 0.17, 0, 0.025, 0, 0, 0, 0, -0.045, 0, 0.12,
+          0.025, 0, 0, 0.065, -0.03, 0, 0.02, 0.065, 0.11, 0.02, 0.055, 0, 0.02,
+        ],
+        3,
+      ),
+    );
+    bladeGeometry.computeVertexNormals();
+    const bladeMaterial = material(0x527338);
+    bladeMaterial.side = T.DoubleSide;
+    this.grassBlades = new T.InstancedMesh(
+      bladeGeometry,
+      bladeMaterial,
+      NX * NZ,
+    );
+    this.scene.add(this.grassBlades);
     for (let i = 0; i < NX * NZ; i++) this.updateCell(i);
-    const base = this.box(0, -2.1, 0, 18, 1, 20, 0x92623e);
+    const base = this.box(0, -2.1, 0, 18, 1, 20, 0x956144);
     base.receiveShadow = true;
-    this.box(0, -2.75, 0, 18.5, 0.3, 20.5, 0x617852);
+    this.box(0, -2.75, 0, 18.1, 0.3, 20.1, 0x6b6555);
     const grass = this.box(0, -3, 0, 180, 0.15, 180, 0x9eb38a);
     grass.receiveShadow = true;
     const chalk = 0xfff3cf;
@@ -103,10 +132,30 @@ export class View {
           for (const y of [0.32, 0.7])
             this.box(x, y, z + 0.8, 0.065, 0.08, 1.7, 0xe5dec1);
       }
-    for (let i = 0; i < 15; i++) {
-      const x = (i % 2 ? 1 : -1) * (10.4 + (i % 3)),
-        z = -12 + ((i * 3.7) % 27);
-      this.tree(x, z, 0.85 + (i % 4) * 0.18);
+    for (let i = 0; i < 8; i++) {
+      const x = (i % 2 ? 1 : -1) * 7.4,
+        z = -7.2 + Math.floor(i / 2) * 4.6;
+      this.tree(x, z, 0.7 + (i % 3) * 0.13);
+    }
+    for (const z of [-9.55, 9.55])
+      for (let x = -8.6; x < 8.6; x += 1.8) {
+        if (z > 0 && Math.abs(x) < 2) continue;
+        this.box(x, 0.45, z, 0.13, 0.9, 0.13, 0xebe5cb);
+        if (x < 7)
+          for (const y of [0.32, 0.7])
+            this.box(x + 0.8, y, z, 1.7, 0.08, 0.065, 0xe5dec1);
+      }
+    // A small potting area and stepping stones make this a backyard parcel.
+    for (let i = 0; i < 5; i++)
+      this.box(-5.3, 0.025, -6.2 + i * 0.55, 0.7, 0.05, 0.39, 0xbbba9c);
+    for (let i = 0; i < 3; i++) {
+      const bush = new T.Mesh(
+        new T.IcosahedronGeometry(0.45, 0),
+        material(0x66843e),
+      );
+      bush.position.set(-3.5 + i * 0.6, 0.4, -8.6);
+      bush.castShadow = true;
+      this.scene.add(bush);
     }
     this.box(-5.3, 0.7, -7.9, 2.6, 1.4, 2.7, 0xe4cba7);
     const roof = this.box(-5.3, 1.57, -7.9, 3, 0.2, 3.05, 0x647e71);
@@ -213,13 +262,33 @@ export class View {
     this.temp.rotation.set(0, 0, 0);
     this.temp.updateMatrix();
     this.terrain.setMatrixAt(i, this.temp.matrix);
-    const variation = ((i * 17) % 13) / 200;
-    this.color.setHSL(
-      h < -0.08 ? 0.075 : spoil(p.x, p.z) ? 0.1 : 0.105,
-      0.3,
-      h < -0.08 ? 0.31 + variation : 0.49 + variation,
-    );
+    const variation = ((i * 17) % 13) / 450;
+    this.color.setHSL(h < -0.25 ? 0.065 : 0.075, 0.39, 0.25 + variation);
     this.terrain.setColorAt(i, this.color);
+    // Turf is a real surface layer: a cut removes it, and backfill stays bare soil.
+    const lawn = this.sim.deepest[i] > -0.015 && h >= -0.015 && h < 0.02;
+    const yard = !(p.x > -6.8 && p.x < -3.7 && p.z < -6.35 && p.z > -9.35);
+    this.temp.position.set(p.x, h + 0.007, p.z);
+    this.temp.rotation.set(-Math.PI / 2, 0, 0);
+    this.temp.scale.setScalar(lawn && yard ? 1 : 0);
+    this.temp.updateMatrix();
+    this.turf.setMatrixAt(i, this.temp.matrix);
+    const patch = (Math.sin(p.x * 0.73) + Math.cos(p.z * 0.52)) * 0.012;
+    this.color.setHSL(0.255 + patch, 0.45, 0.16 + patch + variation * 0.2);
+    this.turf.setColorAt(i, this.color);
+    const scatter = Math.sin(i * 127.1) * 43758.5453;
+    const noise = scatter - Math.floor(scatter);
+    this.temp.position.set(
+      p.x + (noise - 0.5) * 0.17,
+      h + 0.009,
+      p.z + Math.sin(i) * 0.07,
+    );
+    this.temp.rotation.set(0, i * 2.4, 0);
+    this.temp.scale.setScalar(
+      lawn && yard && noise < 0.085 ? 0.45 + noise * 4 : 0,
+    );
+    this.temp.updateMatrix();
+    this.grassBlades.setMatrixAt(i, this.temp.matrix);
   }
   render(dt: number, time: number) {
     const m = this.sim.machine;
@@ -246,6 +315,9 @@ export class View {
     if (this.sim.changed.size) {
       this.terrain.instanceMatrix.needsUpdate = true;
       this.terrain.instanceColor!.needsUpdate = true;
+      this.turf.instanceMatrix.needsUpdate = true;
+      this.turf.instanceColor!.needsUpdate = true;
+      this.grassBlades.instanceMatrix.needsUpdate = true;
       this.sim.changed.clear();
     }
     // Repeating treads follow actual chassis travel, independent of the upper carriage.

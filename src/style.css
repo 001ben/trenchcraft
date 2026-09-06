@@ -7,6 +7,26 @@
   --ink: #294638;
   --gold: #efb554;
 }
+.mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #fff7dfa8;
+  border-radius: 12px;
+}
+.mode-switch button {
+  border: 0;
+  min-width: 44px;
+}
+@media (max-width: 380px) {
+  .brand {
+    font-size: 13px !important;
+  }
+  nav button {
+    padding: 8px !important;
+    font-size: 10px !important;
+  }
+}
 * {
   box-sizing: border-box;
 }

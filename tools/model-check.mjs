@@ -39,8 +39,22 @@ try {
         ),
       );
     }
+    const cell = 27 * 72 + 36;
+    const matrix = new THREE.Matrix4();
+    view.turf.getMatrixAt(cell, matrix);
+    const intact = matrix.elements[0] !== 0;
+    sim.dig({ x: 0.125, y: -0.5, z: -3.125 }, 0.3);
+    view.render(0, 0);
+    view.turf.getMatrixAt(cell, matrix);
+    const cut = matrix.elements[0] === 0;
+    sim.ground[cell] = 0;
+    sim.changed.add(cell);
+    view.render(0, 0);
+    view.turf.getMatrixAt(cell, matrix);
+    const backfillBare = matrix.elements[0] === 0;
     timings.sort((a, b) => a - b);
     return {
+      turf: { intact, cut, backfillBare },
       maxToothError: error,
       p95: timings[Math.floor(timings.length * 0.95)],
       drawCalls: view.renderer.info.render.calls,
@@ -48,6 +62,11 @@ try {
     };
   });
   console.log(JSON.stringify(result));
+  assert.deepEqual(result.turf, {
+    intact: true,
+    cut: true,
+    backfillBare: true,
+  });
   assert.ok(
     result.maxToothError < 0.001,
     "rendered bucket must match simulation kinematics",
