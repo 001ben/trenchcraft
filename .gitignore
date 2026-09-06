@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.local/
+*.blend1
+*.log
