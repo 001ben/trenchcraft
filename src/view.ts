@@ -1,4 +1,5 @@
 import * as T from "three";
+import { Hydraulics } from "./hydraulics";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   Simulation,
@@ -10,6 +11,7 @@ import {
   target,
   tooth,
   CAPACITY,
+  ARM,
 } from "./simulation";
 const material = (color: number) =>
   new T.MeshStandardMaterial({ color, roughness: 0.9 });
@@ -26,10 +28,31 @@ export class View {
   private temp = new T.Object3D();
   private color = new T.Color();
   private parts = new Map<string, T.Object3D>();
-  private particles: { mesh: T.Mesh; velocity: T.Vector3; life: number }[] = [];
+  private particles: {
+    mesh: T.Mesh;
+    velocity: T.Vector3;
+    life: number;
+    start?: T.Vector3;
+  }[] = [];
   private dirt = material(0x845736);
   private track: T.InstancedMesh;
-  private trackPhase = 0;
+  private trackPhase = [0, 0];
+  private lastHeading = 0;
+  private hydraulics?: Hydraulics;
+  private heap = new T.Mesh(
+    new T.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    material(0x67402a),
+  );
+  private lumps = new T.InstancedMesh(
+    new T.IcosahedronGeometry(1, 0),
+    material(0x845333),
+    16,
+  );
+  private fallingSoil = new T.InstancedMesh(
+    new T.IcosahedronGeometry(1, 0),
+    material(0x795033),
+    64,
+  );
   private cursor = new T.Mesh(
     new T.RingGeometry(0.36, 0.41, 24),
     new T.MeshBasicMaterial({
@@ -180,7 +203,11 @@ export class View {
     );
     this.track.castShadow = true;
     this.model.add(this.track);
-    this.scene.add(this.model);
+    this.scene.add(this.model, this.fallingSoil);
+    this.fallingSoil.castShadow = true;
+    this.fallingSoil.count = 0;
+    // Clods move independently; the initial empty instance bounds do not describe them.
+    this.fallingSoil.frustumCulled = false;
     this.cursor.rotation.x = -Math.PI / 2;
     this.scene.add(this.cursor);
     window.addEventListener("resize", () => this.resize());
@@ -247,6 +274,12 @@ export class View {
       }
     });
     this.model.add(gltf.scene);
+    const fill = this.parts.get("BucketFill")!;
+    this.heap.name = "VisibleSoilHeap";
+    fill.add(this.heap, this.lumps);
+    this.heap.castShadow = true;
+    this.lumps.castShadow = true;
+    this.hydraulics = new Hydraulics(this.scene, this.model);
     this.render(0, 0);
   }
   resize() {
@@ -299,7 +332,7 @@ export class View {
     for (const [name, angle] of [
       ["Boom", m.boom],
       ["Stick", m.stick],
-      ["Bucket", m.bucket],
+      ["Bucket", ARM.bucketMount - m.bucket],
     ] as const) {
       const p = this.parts.get(name);
       if (p) p.rotation.x = angle;
@@ -307,10 +340,30 @@ export class View {
     const fill = this.parts.get("BucketFill");
     if (fill) {
       fill.visible = m.load > 0.003;
-      fill.scale.z = Math.max(0.03, m.load / CAPACITY);
+      const fraction = Math.min(1, m.load / CAPACITY);
+      this.heap.position.set(0, -0.09, 0.025);
+      this.heap.scale.set(0.32, 0.04 + fraction * 0.24, 0.25);
+      for (let i = 0; i < 16; i++) {
+        const angle = i * 2.399,
+          radial = 0.22 * Math.sqrt(i / 16);
+        this.temp.position.set(
+          Math.cos(angle) * radial,
+          -0.07 + fraction * 0.2,
+          Math.sin(angle) * radial + 0.025,
+        );
+        this.temp.rotation.set(i, i * 0.7, 0);
+        this.temp.scale.setScalar(
+          fraction > i / 20 ? 0.045 + (i % 3) * 0.015 : 0,
+        );
+        this.temp.updateMatrix();
+        this.lumps.setMatrixAt(i, this.temp.matrix);
+      }
+      this.lumps.instanceMatrix.needsUpdate = true;
     }
     const inside = this.parts.get("Interior");
     if (inside) inside.visible = !this.cab;
+    this.scene.updateMatrixWorld(true);
+    this.hydraulics?.update();
     for (const i of this.sim.changed) this.updateCell(i);
     if (this.sim.changed.size) {
       this.terrain.instanceMatrix.needsUpdate = true;
@@ -322,10 +375,15 @@ export class View {
     }
     // Repeating treads follow actual chassis travel, independent of the upper carriage.
     const travel = this.model.userData.lastPosition as T.Vector3 | undefined;
-    if (travel)
-      this.trackPhase +=
-        (m.x - travel.x) * -Math.sin(m.heading) +
-        (m.z - travel.z) * -Math.cos(m.heading);
+    if (travel) {
+      const distance =
+          (m.x - travel.x) * -Math.sin(m.heading) +
+          (m.z - travel.z) * -Math.cos(m.heading),
+        turn = m.heading - this.lastHeading;
+      this.trackPhase[0] -= distance - turn * 0.89;
+      this.trackPhase[1] -= distance + turn * 0.89;
+    }
+    this.lastHeading = m.heading;
     this.model.userData.lastPosition = new T.Vector3(m.x, 0, m.z);
     const straight = 1.9,
       r = 0.38,
@@ -333,7 +391,8 @@ export class View {
     for (let side = 0; side < 2; side++)
       for (let i = 0; i < 36; i++) {
         const q =
-          ((((i * length) / 36 + this.trackPhase) % length) + length) % length;
+          ((((i * length) / 36 + this.trackPhase[side]) % length) + length) %
+          length;
         let z: number, y: number, a: number;
         if (q < straight) {
           z = -straight / 2 + q;
@@ -366,6 +425,15 @@ export class View {
       tip.z,
     );
     this.cursor.visible = !this.overview;
+    this.fallingSoil.count = this.sim.falling.length;
+    this.sim.falling.forEach((p, i) => {
+      this.temp.position.set(p.x, p.y, p.z);
+      this.temp.rotation.set(time * 3 + i, i * 0.7, time + i);
+      this.temp.scale.setScalar(Math.cbrt(p.volume) * 0.75);
+      this.temp.updateMatrix();
+      this.fallingSoil.setMatrixAt(i, this.temp.matrix);
+    });
+    this.fallingSoil.instanceMatrix.needsUpdate = true;
     for (const p of this.sim.dust.splice(0))
       if (this.particles.length < 36) {
         const mesh = new T.Mesh(new T.IcosahedronGeometry(0.065, 0), this.dirt);
@@ -378,14 +446,22 @@ export class View {
             p.dump ? -1 : 0.8,
             (Math.random() - 0.5) * 1.2,
           ),
-          life: 0.55,
+          life: p.dump ? 0.45 : 0.32,
+          start: p.dump ? undefined : mesh.position.clone(),
         });
       }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
-      p.velocity.y -= dt * 5;
-      p.mesh.position.addScaledVector(p.velocity, dt);
+      if (p.start && fill) {
+        const t = Math.min(1, 1 - p.life / 0.32),
+          destination = fill.getWorldPosition(new T.Vector3());
+        p.mesh.position.lerpVectors(p.start, destination, t);
+        p.mesh.position.y += Math.sin(t * Math.PI) * 0.15;
+      } else {
+        p.velocity.y -= dt * 5;
+        p.mesh.position.addScaledVector(p.velocity, dt);
+      }
       if (p.life <= 0) {
         this.scene.remove(p.mesh);
         p.mesh.geometry.dispose();

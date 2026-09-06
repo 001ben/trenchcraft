@@ -38,7 +38,9 @@ The guide offers **Alternate · boom on left**, which swaps the boom and arm axe
 
 Tap **Drive** in the top bar. Drive mode gives each hand its own track's forward/reverse lever. Push both forward to travel; opposite directions pivot. Travel is relative to the tracks, even when the upper carriage is swung around. Tap **Dig** to return to attachments. The sticks are labelled Left track and Right track while driving. Cab/chase views are in the top bar; the guide also offers a plot overview and optional synthesized sound.
 
-Lower the teeth into the soil, then curl and pull the arm in. The bucket holds **0.22 m³**. Lift it clear, swing toward the amber spoil strip and open it to deposit its contents. The dashed cream line marks a **6 m × 1 m** practice trench with a **0.6 m** target depth. The cutting footprint is narrower than the trench, so adjacent bites are needed. Move the tracks to reach the full length.
+Lower the teeth against the soil, then curl and pull the arm in. Untouched ground resists further lowering; curling/crowding takes a bite. The bucket holds **0.22 m³**, with a visible soil mound and a percentage indicator. Lift it clear, swing toward the amber spoil strip and open it: soil falls from the cutting lip under gravity and builds a pile on impact. A tipped bucket continues emptying after you release the stick. Using several attachment movements together shares hydraulic speed, and a full bucket lifts slightly more slowly.
+
+The dashed cream line marks a **6 m × 1 m** practice trench with a **0.6 m** target depth. The cutting footprint is narrower than the trench, so adjacent bites are needed. Move the tracks to reach the full length.
 
 The fenced block starts as a grassy yard with trees, shrubs and a small shed. Grass and tufts disappear at the cutting point to reveal brown soil. Backfilled cuts stay bare; a fresh-plot reset restores the lawn.
 
@@ -48,7 +50,7 @@ Stars reward actual earthwork:
 - Two stars: 90% excavation and 85% of all cuts on the intended line.
 - Three stars: 95% excavation, 95% on line and 85% of above-ground spoil in its marked strip.
 
-Backfilling reduces progress. Re-digging the same cells cannot erase earlier off-line cuts. Ground volume and bucket volume are conserved. Progress, terrain, bucket contents and control pattern save in `trenchcraft-save-v1` on this browser. The guide contains a confirmed fresh-plot reset.
+Backfilling reduces progress. Re-digging the same cells cannot erase earlier off-line cuts. Volume is conserved between ground, bucket and falling soil. Progress, terrain, bucket contents, airborne soil and control pattern save in `trenchcraft-save-v1` on this browser. The key is unchanged; version 2 records migrate earlier saves automatically. The guide contains a confirmed fresh-plot reset.
 
 ## Source map
 
@@ -57,6 +59,7 @@ Backfilling reduces progress. Re-digging the same cells cannot erase earlier off
 | `src/simulation.ts`                | Joint kinematics, input pattern, terrain edits, volume, score and save validation                    |
 | `src/controls.ts`                  | Two independent captured pointers, keyboard and gamepad input                                        |
 | `src/view.ts`                      | Three.js plot, animated Blender joints and track shoes, ground instances, particles, cameras and map |
+| `src/hydraulics.ts`                | Cylinder/rod visuals connected to moving attachment pivots                                           |
 | `src/main.ts`                      | Game loop, minimal HUD, guide, sound and save lifecycle                                              |
 | `art/build_excavator.py`           | Original Blender model authoring and GLB export                                                      |
 | `art/mini-excavator.blend`         | Editable, posed source model                                                                         |
@@ -64,6 +67,7 @@ Backfilling reduces progress. Re-digging the same cells cannot erase earlier off
 | `tests/simulation.test.ts`         | Deterministic gameplay and conservation checks                                                       |
 | `tools/browser-check.mjs`          | Physical browser input, screenshots and touch checks (Edge)                                          |
 | `tools/model-check.mjs`            | Render/simulation joint agreement and a small timing sample                                          |
+| `tools/bucket-check.mjs`           | Empty/partial/full scoop and falling-soil close-ups; track animation direction checks                |
 
 Rebuild the model with Blender 5:
 
@@ -71,11 +75,11 @@ Rebuild the model with Blender 5:
 & 'C:/Program Files/Blender Foundation/Blender 5.0/blender.exe' --background --python art/build_excavator.py
 ```
 
-The GLB exports at zero joint angles. Runtime poses rotate `Upper`, `Boom`, `Stick` and `Bucket`; the `.blend` is saved in a readable working pose. Keep link lengths and tooth offsets aligned with `ARM` in the simulation. Run the model check after changing either side.
+The GLB exports at zero joint angles. Runtime poses rotate `Upper`, `Boom`, `Stick` and `Bucket`; the `.blend` is saved in a readable working pose. The backhoe scoop opens toward the cab and its teeth curl inward/upward; its silhouette was checked against [Kubota's U17 photographs](https://www.kubotausa.com/docs/default-source/brochure-sheets/u17.pdf). `BucketFill` is an anchor for the growing runtime soil mound. Keep link lengths, bucket mounting angle and tooth offsets aligned with `ARM` in the simulation. Run the model check after changing either side.
 
 ## Design intent and limits
 
-This is a controls-familiarity game, not machine certification or an excavation safety simulator. It uses kinematic joints and a 25 cm soil height grid, not real hydraulic forces, undercarriage contact physics, collapse, underground services or a full bucket/soil solver. Soil may be cut when the teeth overlap it while curling/crowding; there is no force feedback. Cab visibility and depth judgement need real user feedback. Test ergonomics and GPU performance on an actual phone/iPad before calling them proven.
+This is a controls-familiarity game, not machine certification or an excavation safety simulator. It uses kinematic joints, a 25 cm soil height grid, approximate tooth contact and a bounded 64-clod gravity simulation. It does not model real hydraulic forces, full bucket/body collisions, undercarriage contact physics, soil collapse or underground services. Soil is cut when inward-moving teeth overlap it while curling/crowding; there is no force feedback. Cab visibility and depth judgement need real user feedback. Test ergonomics and GPU performance on an actual phone/iPad before calling them proven.
 
 GILT Quarry Works was design/engineering reference material: retain bounded rendering, physical input checks, careful saves and compact mobile UI. Its game code and assets were not copied into this project. This game has its own original Blender model and its own simulation, controls and scoring.
 

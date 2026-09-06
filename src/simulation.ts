@@ -7,7 +7,8 @@ export const ARM = {
   stick: 2.3,
   baseHeight: 1.25,
   baseForward: 0.35,
-  toothForward: 0.7,
+  bucketMount: Math.PI / 2,
+  toothForward: -0.7,
   toothDown: -0.35,
 };
 export type Pattern = "ISO" | "Alternate";
@@ -37,12 +38,22 @@ export type Machine = {
   bucket: number;
   load: number;
 };
+export type SoilClod = {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  volume: number;
+};
 export type Save = {
-  version: 1;
+  version: 2;
   machine: Machine;
   ground: number[];
   deepest: number[];
   pattern: Pattern;
+  falling: SoilClod[];
 };
 export function cellPosition(i: number) {
   return {
@@ -59,7 +70,7 @@ export function spoil(x: number, z: number) {
 export function tooth(m: Machine) {
   const a = m.boom,
     b = a + m.stick,
-    c = b + m.bucket;
+    c = b + ARM.bucketMount - m.bucket;
   const reach =
     ARM.baseForward +
     ARM.boom * Math.cos(a) +
@@ -74,6 +85,15 @@ export function tooth(m: Machine) {
     ARM.toothDown * Math.cos(c);
   const yaw = m.heading + m.swing;
   return { x: m.x - Math.sin(yaw) * reach, y, z: m.z - Math.cos(yaw) * reach };
+}
+export function bucketOpening(m: Machine) {
+  const angle = m.boom + m.stick + ARM.bucketMount - m.bucket;
+  const forward = -0.44 * Math.cos(angle) - 0.9 * Math.sin(angle);
+  return {
+    x: -Math.sin(m.heading + m.swing) * forward,
+    y: -0.44 * Math.sin(angle) + 0.9 * Math.cos(angle),
+    z: -Math.cos(m.heading + m.swing) * forward,
+  };
 }
 export function axes(c: Controls, p: Pattern) {
   return {
@@ -97,6 +117,9 @@ export class Simulation {
   ground = new Float32Array(NX * NZ);
   deepest = new Float32Array(NX * NZ);
   pattern: Pattern = "ISO";
+  falling: SoilClod[] = [];
+  private dischargeIndex = 0;
+  resistance = 0;
   changed = new Set<number>();
   dust: { x: number; y: number; z: number; dump: boolean }[] = [];
   lastAction = "Lower the boom toward the first chalk marks.";
@@ -106,6 +129,7 @@ export class Simulation {
       this.ground.set(save.ground);
       this.deepest.set(save.deepest);
       this.pattern = save.pattern;
+      this.falling = save.falling.map((p) => ({ ...p }));
     }
   }
   height(x: number, z: number) {
@@ -147,8 +171,35 @@ export class Simulation {
     }
     return removed;
   }
+  /** Earth stays in flight until it reaches the ground; that volume is saved too. */
   dump(point: { x: number; y: number; z: number }, dt: number) {
-    let deposited = 0;
+    if (
+      this.falling.length >= 64 ||
+      Math.abs(point.x) > 8.5 ||
+      Math.abs(point.z) > 9.5 ||
+      this.height(point.x, point.z) >= 1.799
+    )
+      return 0;
+    const volume = Math.min(this.machine.load, Math.max(0, dt) * 0.22);
+    if (volume <= 1e-7) return 0;
+    const opening = bucketOpening(this.machine);
+    // Scatter across the cutting lip instead of emitting one solid column.
+    const across = (((this.dischargeIndex++ * 0.61803398875) % 1) - 0.5) * 0.56;
+    const yaw = this.machine.heading + this.machine.swing;
+    const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+    this.machine.load -= volume;
+    this.falling.push({
+      ...point,
+      x: point.x + right.x * across,
+      z: point.z + right.z * across,
+      vx: opening.x * 0.2 + right.x * across * 0.4,
+      vy: -0.2,
+      vz: opening.z * 0.2 + right.z * across * 0.4,
+      volume,
+    });
+    return volume;
+  }
+  private deposit(point: SoilClod) {
     const cx = Math.floor((point.x + (NX * CELL) / 2) / CELL),
       cz = Math.floor((point.z + (NZ * CELL) / 2) / CELL);
     const candidates: number[] = [];
@@ -159,35 +210,47 @@ export class Simulation {
           p = cellPosition(i);
         if (Math.hypot(p.x - point.x, p.z - point.z) < 0.6) candidates.push(i);
       }
-    // Prefer the lowest cells so a mound spreads instead of becoming a thin tower.
     candidates.sort((a, b) => this.ground[a] - this.ground[b]);
-    let budget = Math.min(this.machine.load, dt * 0.22);
     for (const i of candidates) {
-      const volume = Math.min(
-        budget,
-        Math.max(0, 1.8 - this.ground[i]) * CELL * CELL,
+      const old = this.ground[i],
+        amount = Math.min(point.volume, Math.max(0, 1.8 - old) * CELL * CELL);
+      if (amount <= 0) continue;
+      this.ground[i] += amount / (CELL * CELL);
+      point.volume = Math.max(
+        0,
+        point.volume - (this.ground[i] - old) * CELL * CELL,
       );
-      if (volume <= 0) continue;
-      const old = this.ground[i];
-      this.ground[i] += volume / (CELL * CELL);
-      const placed = (this.ground[i] - old) * CELL * CELL;
-      this.machine.load = Math.max(0, this.machine.load - placed);
-      budget -= placed;
-      deposited += placed;
       this.changed.add(i);
-      if (budget <= 1e-7) break;
+      if (point.volume < 1e-7) break;
     }
-    if (deposited > 0) {
-      this.dust.push({ ...point, dump: true });
-      this.lastAction = spoil(point.x, point.z)
-        ? "Tidy pile. Swing back for your next bite."
-        : "Try placing the next load inside the amber spoil strip.";
+  }
+  private fall(dt: number) {
+    for (let i = this.falling.length - 1; i >= 0; i--) {
+      const p = this.falling[i];
+      p.vy -= 9.81 * dt;
+      p.y += p.vy * dt;
+      p.x = clamp(p.x + p.vx * dt, -8.7, 8.7);
+      p.z = clamp(p.z + p.vz * dt, -9.7, 9.7);
+      const ground = this.height(p.x, p.z);
+      if (p.y > ground + 0.025) continue;
+      this.deposit(p);
+      if (p.volume < 1e-7) {
+        this.dust.push({ ...p, dump: true });
+        this.falling.splice(i, 1);
+        this.lastAction = spoil(p.x, p.z)
+          ? "Tidy pile. Swing back for the next bite."
+          : "Place the next load inside the amber spoil strip.";
+      } else {
+        p.y = this.height(p.x, p.z) + 0.025;
+        p.vy = 0;
+      }
     }
-    return deposited;
   }
   update(c: Controls, dt: number) {
     dt = clamp(dt, 0, 0.05);
     const m = this.machine;
+    this.fall(dt);
+    this.resistance = 0;
     if (c.travel) {
       // Two track levers: forward/reverse per side, independent of upper-body swing.
       const left = -c.ly,
@@ -208,16 +271,60 @@ export class Simulation {
           "Tracks mode · each stick drives one track. Switch back to Dig when lined up.";
       return;
     }
-    const a = axes(c, this.pattern);
+    const a = axes(c, this.pattern),
+      before = { ...m };
+    const flow =
+      1 /
+      Math.max(
+        1,
+        (Math.abs(a.boom) + Math.abs(a.stick) + Math.abs(a.curl)) * 0.65,
+      );
     m.swing += a.swing * dt * 0.6;
-    m.boom = clamp(m.boom + a.boom * dt * 0.4, -0.12, 1.3);
-    m.stick = clamp(m.stick + a.stick * dt * 0.55, -2.55, -0.3);
-    m.bucket = clamp(m.bucket + a.curl * dt * 0.95, -1.2, 1.7);
-    const tip = tooth(m),
-      ground = this.height(tip.x, tip.z);
-    if (tip.y < ground + 0.03 && (a.curl > 0.05 || a.stick < -0.05))
+    m.boom = clamp(
+      m.boom + a.boom * dt * 0.4 * flow * (1 - (m.load / CAPACITY) * 0.15),
+      -0.12,
+      1.3,
+    );
+    m.stick = clamp(m.stick + a.stick * dt * 0.55 * flow, -2.55, -0.3);
+    m.bucket = clamp(m.bucket + a.curl * dt * 0.95 * flow, -1.2, 1.7);
+    let tip = tooth(m);
+    const previous = tooth(before);
+    const inward =
+      (tip.x - previous.x) * Math.sin(m.heading + m.swing) +
+      (tip.z - previous.z) * Math.cos(m.heading + m.swing);
+    if (
+      tip.y < this.height(tip.x, tip.z) + 0.03 &&
+      inward > 1e-6 &&
+      (a.curl > 0.05 || a.stick < -0.05) &&
+      bucketOpening(m).y > -0.15
+    )
       this.dig(tip, dt);
-    if (a.curl < -0.05 && m.bucket < 0.0 && tip.y > ground + 0.2)
+    // Limit penetration through uncut ground. Curl/crowd must remove soil to advance.
+    const penetration = this.height(tip.x, tip.z) - tip.y;
+    if (penetration > 0.1 && tip.y < previous.y) {
+      this.resistance = clamp((penetration - 0.1) * 8, 0, 1);
+      const proposed = { ...m };
+      let lo = 0,
+        hi = 1;
+      for (let i = 0; i < 9; i++) {
+        const t = (lo + hi) / 2;
+        for (const key of ["boom", "stick", "bucket"] as const)
+          m[key] = before[key] + (proposed[key] - before[key]) * t;
+        const p = tooth(m);
+        if (p.y >= this.height(p.x, p.z) - 0.1) lo = t;
+        else hi = t;
+      }
+      for (const key of ["boom", "stick", "bucket"] as const)
+        m[key] = before[key] + (proposed[key] - before[key]) * lo;
+      tip = tooth(m);
+      this.lastAction =
+        "Teeth against the soil. Curl and draw the arm toward you to take a bite.";
+    }
+    if (
+      m.load > 0 &&
+      bucketOpening(m).y < 0.25 &&
+      tip.y > this.height(tip.x, tip.z) + 0.12
+    )
       this.dump(tip, dt);
     if (m.load > CAPACITY * 0.98)
       this.lastAction =
@@ -261,20 +368,26 @@ export class Simulation {
   }
   snapshot(): Save {
     return {
-      version: 1,
+      version: 2,
       machine: { ...this.machine },
       ground: Array.from(this.ground),
       deepest: Array.from(this.deepest),
       pattern: this.pattern,
+      falling: this.falling.map((p) => ({ ...p })),
     };
   }
 }
 export function parseSave(raw: string | null): Save | null {
   try {
     if (!raw) return null;
-    const s = JSON.parse(raw) as Save;
+    const data = JSON.parse(raw);
+    if (data.version === 1) {
+      data.version = 2;
+      data.falling = [];
+    }
+    const s = data as Save;
     if (
-      s.version !== 1 ||
+      s.version !== 2 ||
       !["ISO", "Alternate"].includes(s.pattern) ||
       !s.machine
     )
@@ -306,6 +419,27 @@ export function parseSave(raw: string | null): Save | null {
       s.deepest.some(
         (v, i) =>
           !Number.isFinite(v) || v < -1.401 || v > 0 || v > s.ground[i] + 1e-6,
+      )
+    )
+      return null;
+    if (
+      !Array.isArray(s.falling) ||
+      s.falling.length > 64 ||
+      s.falling.some(
+        (p) =>
+          !p ||
+          !["x", "y", "z", "vx", "vy", "vz", "volume"].every((k) =>
+            Number.isFinite(p[k as keyof SoilClod]),
+          ) ||
+          Math.abs(p.x) > 9 ||
+          Math.abs(p.z) > 10 ||
+          p.y < -2 ||
+          p.y > 10 ||
+          Math.abs(p.vx) > 3 ||
+          Math.abs(p.vz) > 3 ||
+          Math.abs(p.vy) > 20 ||
+          p.volume <= 0 ||
+          p.volume > CAPACITY,
       )
     )
       return null;

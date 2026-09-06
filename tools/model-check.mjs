@@ -30,7 +30,7 @@ try {
       timings.push(performance.now() - start);
       const visual = view.model
         .getObjectByName("Bucket")
-        .localToWorld(new THREE.Vector3(0, -0.35, -0.7));
+        .localToWorld(new THREE.Vector3(0, -0.35, 0.7));
       const expected = tooth(sim.machine);
       error = Math.max(
         error,

@@ -55,24 +55,24 @@ cyl('Head',(-.44,-.23,2.02),.145,.27,skin,interior)
 cyl('Hard hat',(-.44,-.23,2.17),.18,.11,yellow,interior)
 box('Boots',(-.44,.35,1.23),(.40,.27,.16),dark,interior)
 # Authored at zero joint angles so runtime joints match the domain kinematics exactly.
-box('Boom spar',(0,1.4,0),(.40,2.8,.38),yellow,boom,.09)
-for x in [-.22,.22]:bar('Boom reinforcement',(x,.12,.17),(x,2.58,.17),.065,cream,boom)
-bar('Boom cylinder',(0,.3,.32),(0,1.65,.32),.115,dark,boom)
-bar('Boom piston',(0,1.65,.32),(0,2.6,.32),.055,steel,boom)
+for a,b in zip([(0,0),(.85,.32),(1.75,.28)],[(.85,.32),(1.75,.28),(2.8,0)]):
+    o=box('Bent boom',(0,(a[0]+b[0])/2,(a[1]+b[1])/2),(.40,math.hypot(b[0]-a[0],b[1]-a[1])+.10,.38),yellow,boom,.07)
+    o.rotation_euler.x=math.atan2(b[1]-a[1],b[0]-a[0])
 box('Dipper spar',(0,1.15,0),(.30,2.3,.32),yellow,stick,.07)
-bar('Dipper cylinder',(0,.12,.25),(0,1.18,.25),.095,dark,stick)
-bar('Dipper piston',(0,1.18,.25),(0,2.15,.25),.045,steel,stick)
 for parent in [boom,stick,bucket]:cyl('Pivot pin',(0,0,0),.13,.60,steel,parent,(0,math.pi/2,0))
 # Thick scoop floor, closed side cheeks, and four separate cutting teeth.
-profile=[(-.14,.06),(.04,-.27),(.36,-.46),(.70,-.35)]
+# A backhoe scoop opens toward the operator (-Y), not away like a loader.
+profile=[(.14,.08),(.16,-.18),(-.06,-.44),(-.36,-.51),(-.70,-.35)]
 for (ay,az),(by,bz) in zip(profile,profile[1:]):
-    o=box('Curved bucket floor',(0,(ay+by)/2,(az+bz)/2),(.74,math.hypot(by-ay,bz-az),.09),dark,bucket,.018);o.rotation_euler.x=math.atan2(bz-az,by-ay)
-for x in [-.38,.38]:
-    verts=[(x-.035,y,z) for y,z in profile]+[(x+.035,y,z) for y,z in profile]
-    faces=[(0,1,2,3),(7,6,5,4)]+[(i,(i+1)%4,(i+1)%4+4,i+4) for i in range(4)]
-    mesh=bpy.data.meshes.new('Cheek');mesh.from_pydata(verts,[],faces);mesh.update();ob=bpy.data.objects.new('Bucket cheek',mesh);bpy.context.collection.objects.link(ob);finish(ob,'Bucket cheek',dark,bucket,.015)
-for x in [-.27,-.09,.09,.27]:box('Tooth',(x,.72,-.35),(.11,.24,.09),steel,bucket,.01)
-box('BucketFill',(0,.30,-.22),(.60,.53,.21),soil,bucket,.08)
+    o=box('Curved bucket shell',(0,(ay+by)/2,(az+bz)/2),(.76,math.hypot(by-ay,bz-az)+.035,.065),dark,bucket,.015);o.rotation_euler.x=math.atan2(bz-az,by-ay)
+for x in [-.39,.39]:
+    count=len(profile);verts=[(x-.028,y,z) for y,z in profile]+[(x+.028,y,z) for y,z in profile]
+    faces=[tuple(range(count-1,-1,-1)),tuple(range(count,count*2))]+[(i,(i+1)%count,(i+1)%count+count,i+count) for i in range(count)]
+    mesh=bpy.data.meshes.new('Scoop side');mesh.from_pydata(verts,[],faces);mesh.update();ob=bpy.data.objects.new('Bucket cheek',mesh);bpy.context.collection.objects.link(ob);finish(ob,'Bucket cheek',dark,bucket,.012)
+for x in [-.27,-.09,.09,.27]:box('Cutting tooth',(x,-.67,-.35),(.11,.25,.075),steel,bucket,.01)
+for x in [-.19,.19]:box('Coupler ear',(x,0,.12),(.09,.35,.20),steel,bucket,.025)
+group('BucketFill',(0,-.27,-.32),bucket)
+# Dynamic hydraulics in the view connect moving pivot anchors.
 # Bake bevels, then join compatible objects under each pivot to keep draw calls bounded.
 for parent in [root,upper,interior,boom,stick,bucket]:
     meshes=[o for o in list(bpy.context.scene.objects) if o.type=='MESH' and o.parent==parent and o.name!='BucketFill']
@@ -85,6 +85,6 @@ for parent in [root,upper,interior,boom,stick,bucket]:
         bpy.context.view_layer.objects.active=meshes[0];bpy.ops.object.join();meshes[0].name=parent.name+'Shell'
 os.makedirs(os.path.join(ROOT,'public','models'),exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(ROOT,'public','models','mini-excavator.glb'),export_format='GLB',export_apply=True)
-boom.rotation_euler.x=.58;stick.rotation_euler.x=-1.5;bucket.rotation_euler.x=.15
+boom.rotation_euler.x=.58;stick.rotation_euler.x=-1.5;bucket.rotation_euler.x=math.pi/2-.15
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT,'art','mini-excavator.blend'))
 print('TRENCHCRAFT ASSET COMPLETE')

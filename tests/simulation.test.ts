@@ -9,9 +9,13 @@ import {
   parseSave,
   cellPosition,
   target,
+  tooth,
+  bucketOpening,
 } from "../src/simulation";
 const volume = (s: Simulation) =>
-  s.ground.reduce((sum, h) => sum + h * CELL * CELL, 0) + s.machine.load;
+  s.ground.reduce((sum, h) => sum + h * CELL * CELL, 0) +
+  s.machine.load +
+  s.falling.reduce((sum, p) => sum + p.volume, 0);
 test("ISO maps all eight directions; alternate swaps only boom and arm", () => {
   const c = neutral();
   c.ly = 1;
@@ -44,10 +48,85 @@ test("digging is capacity bounded and conserves soil through placement and reloa
   assert.deepEqual(s.ground, before);
   const restored = new Simulation(parseSave(JSON.stringify(s.snapshot())));
   assert.equal(restored.machine.load, s.machine.load);
-  for (let i = 0; i < 300; i++) restored.dump({ x: 3, y: 1, z: -3 }, 1 / 60);
+  for (let i = 0; i < 300; i++) {
+    restored.dump({ x: 3.75, y: 1, z: -3 }, 1 / 60);
+    restored.update(neutral(), 1 / 60);
+  }
   assert.ok(restored.machine.load < 1e-6);
   assert.ok(Math.abs(volume(restored)) < 1e-6);
   assert.ok(restored.score().tidiness > 0.99);
+  assert.equal(restored.falling.length, 0);
+  assert.ok(restored.ground.some((h) => h > 0));
+});
+test("bucket teeth curl toward the cab and upward, then open away and downward", () => {
+  const s = new Simulation();
+  s.machine.boom = 0.9;
+  const start = tooth(s.machine);
+  s.update({ ...neutral(), rx: -1 }, 0.05);
+  const curled = tooth(s.machine);
+  assert.ok(
+    curled.z > start.z,
+    "ISO right-left brings the cutting edge toward the cab",
+  );
+  assert.ok(curled.y > start.y, "curl lifts the cutting edge");
+  s.update({ ...neutral(), rx: 1 }, 0.05);
+  const opened = tooth(s.machine);
+  assert.ok(opened.z < curled.z);
+  assert.ok(opened.y < curled.y);
+  assert.ok(
+    bucketOpening(s.machine).y > 0,
+    "working bucket holds soil with its opening upward",
+  );
+});
+test("boom, arm and swing move in the operator's labelled ISO directions", () => {
+  const move = (c: Partial<ReturnType<typeof neutral>>) => {
+    const s = new Simulation();
+    s.machine.boom = 0.9;
+    const before = tooth(s.machine);
+    s.update({ ...neutral(), ...c }, 0.05);
+    return { before, after: tooth(s.machine) };
+  };
+  for (const [c, axis, sign] of [
+    [{ ry: -1 }, "y", -1],
+    [{ ry: 1 }, "y", 1],
+    [{ ly: -1 }, "z", -1],
+    [{ ly: 1 }, "z", 1],
+    [{ lx: -1 }, "x", -1],
+    [{ lx: 1 }, "x", 1],
+  ] as const) {
+    const { before, after } = move(c);
+    assert.ok((after[axis] - before[axis]) * sign > 0, JSON.stringify(c));
+  }
+});
+test("untouched ground resists the teeth and lowering alone cannot excavate", () => {
+  const s = new Simulation();
+  for (let i = 0; i < 600; i++) s.update({ ...neutral(), ry: -1 }, 1 / 60);
+  const tip = tooth(s.machine);
+  assert.ok(tip.y >= s.height(tip.x, tip.z) - 0.101);
+  assert.equal(s.machine.load, 0);
+  assert.ok(s.ground.every((h) => h === 0));
+  assert.ok(s.resistance > 0);
+});
+test("tipped soil falls after releasing the stick and survives an in-flight reload", () => {
+  let s = new Simulation();
+  s.dig({ x: 0, y: -0.7, z: -3 }, 1);
+  Object.assign(s.machine, { boom: 1, stick: -0.8, bucket: -1.2, swing: -0.8 });
+  assert.ok(bucketOpening(s.machine).y < 0.25);
+  s.update(neutral(), 1 / 60);
+  assert.ok(s.falling.length > 0);
+  assert.ok(
+    s.ground.every((h) => h <= 0),
+    "no spoil pile appears before impact",
+  );
+  assert.ok(Math.abs(volume(s)) < 1e-6);
+  const save = parseSave(JSON.stringify(s.snapshot()));
+  assert.ok(save);
+  s = new Simulation(save);
+  for (let i = 0; i < 300; i++) s.update(neutral(), 1 / 60);
+  assert.ok(s.machine.load < 1e-6);
+  assert.equal(s.falling.length, 0);
+  assert.ok(s.ground.some((h) => h > 0));
+  assert.ok(Math.abs(volume(s)) < 1e-6);
 });
 test("soil cannot be dumped outside the plot or into an over-height pile", () => {
   const s = new Simulation();
@@ -119,10 +198,14 @@ test("invalid saves are rejected and valid terrain and pattern survive", () => {
     (p: any) => p.ground.pop(),
     (p: any) => (p.deepest[0] = 1),
     (p: any) => (p.pattern = "unknown"),
+    (p: any) =>
+      (p.falling = [{ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, volume: -1 }]),
   ]) {
     const bad = structuredClone(save);
     mutate(bad);
     assert.equal(parseSave(JSON.stringify(bad)), null);
   }
   assert.equal(parseSave("broken"), null);
+  const legacy = { ...save, version: 1, falling: undefined };
+  assert.deepEqual(parseSave(JSON.stringify(legacy)), save);
 });
