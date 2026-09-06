@@ -2,6 +2,7 @@ import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 await mkdir(".local", { recursive: true });
+const base = process.env.TRENCHCRAFT_TEST_URL ?? "http://127.0.0.1:5174/";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
   const page = await browser.newPage({
@@ -9,7 +10,7 @@ try {
     }),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://127.0.0.1:5174/", { waitUntil: "networkidle" });
+  await page.goto(base, { waitUntil: "networkidle" });
   await page.locator("#loading").waitFor({ state: "hidden" });
   assert.equal(await page.locator("#panel").isVisible(), false);
   assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
@@ -102,7 +103,7 @@ try {
     hasTouch: true,
   });
   mobile.on("pageerror", (e) => errors.push(e.message));
-  await mobile.goto("http://127.0.0.1:5174/", { waitUntil: "networkidle" });
+  await mobile.goto(base, { waitUntil: "networkidle" });
   await mobile.locator("#loading").waitFor({ state: "hidden" });
   assert.equal(await mobile.locator("#panel").isVisible(), false);
   const cdp = await mobile.context().newCDPSession(mobile);

@@ -19,7 +19,9 @@ npm run build
 npm run preview
 ```
 
-This is a separate local Git repository, with no GitHub remote or public deployment configured.
+Play the public build at **https://001ben.github.io/trenchcraft/**. Source: **https://github.com/001ben/trenchcraft**.
+
+GitHub Actions runs the unit tests and builds with the `/trenchcraft/` base path before deploying `main` to GitHub Pages. Pull requests run checks without deploying. Saves stay local to their browser origin, so localhost and the hosted game have separate progress.
 
 ## Playing
 
