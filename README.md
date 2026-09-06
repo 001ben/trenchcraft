@@ -1,5 +1,9 @@
 # Trenchcraft
 
+Scooping now cuts a band across the bucket's width, with removed volume limited by actual tooth travel through the bank. Captured soil enters a small 9-by-12 bed at the lip, rolls down the bowl as it curls, and empties from the front when discharged. A short contact strip connects active cuts to the lip; the former flying collection particles and growing sphere are removed. Cut resistance affects crowd/curl speed, and enabling sound adds a scrape proportional to actual earth removal. Saved load and soil volume remain compatible; reloaded contents start settled inside the bowl.
+
+`src/bucket-load.ts` owns the bounded in-bucket settling approximation, and `src/bucket-soil.ts` renders its continuous surface and closed edges. This is a shallow granular approximation, not a full particle/contact solver. `node tools/scoop-check.mjs` captures successive frames of a real scoop and checks that visible contents match load and no collection particles appear. `node tools/terrain-benchmark.mjs scoop-loaded --loaded` exercises the settling bucket with the existing heavy terrain scenario.
+
 A gentle, stylized mini-excavator practice game. Built for two thumbs on a phone or iPad, with keyboard and dual-stick gamepad support. The first job is a six-metre service trench on a small practice plot: learn to reach, curl, lift, swing and place spoil while keeping the cut straight.
 
 ## Run

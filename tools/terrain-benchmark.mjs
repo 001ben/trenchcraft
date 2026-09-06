@@ -1,5 +1,7 @@
 import { chromium } from "@playwright/test";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+await mkdir(".local", { recursive: true });
+const loaded = process.argv.includes("--loaded");
 const tag = process.argv[2] || "after";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
@@ -17,7 +19,7 @@ try {
     );
     await page.goto("http://127.0.0.1:5174/terrain-benchmark");
     await page.waitForFunction(() => window.review);
-    const metrics = await page.evaluate(async () => {
+    const metrics = await page.evaluate(async (loaded) => {
       const { sim, view, cellPosition } = window.review;
       for (let i = 0; i < sim.ground.length; i++) {
         const { x, z } = cellPosition(i);
@@ -32,6 +34,7 @@ try {
         sim.deepest[i] = trench;
         sim.changed.add(i);
       }
+      sim.machine.load = loaded ? 0.22 : 0;
       sim.machine.boom = 1;
       sim.machine.stick = -1.1;
       sim.machine.bucket = 0.6;
@@ -83,8 +86,9 @@ try {
         geometries: view.renderer.info.memory.geometries,
         textures: view.renderer.info.memory.textures,
         pixelRatio: view.renderer.getPixelRatio(),
+        loaded,
       };
-    });
+    }, loaded);
     await page.screenshot({
       path: `.local/terrain-${tag}-${viewport.width}.png`,
     });

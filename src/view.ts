@@ -1,18 +1,11 @@
 import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { BucketSoil } from "./bucket-soil";
 import { LandSurface } from "./land-surface";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Hydraulics } from "./hydraulics";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import {
-  Simulation,
-  NX,
-  NZ,
-  cellPosition,
-  tooth,
-  CAPACITY,
-  ARM,
-} from "./simulation";
+import { Simulation, NX, NZ, cellPosition, tooth, ARM } from "./simulation";
 const material = (color: number) =>
   new T.MeshStandardMaterial({ color, roughness: 0.9 });
 export class View {
@@ -30,7 +23,6 @@ export class View {
     position: T.Vector3;
     velocity: T.Vector3;
     life: number;
-    start?: T.Vector3;
   }[] = [];
   private dustMesh = new T.InstancedMesh(
     new T.IcosahedronGeometry(0.065, 1),
@@ -42,15 +34,7 @@ export class View {
   private trackPhase = [0, 0];
   private lastHeading = 0;
   private hydraulics?: Hydraulics;
-  private heap = new T.Mesh(
-    new T.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2),
-    material(0x67402a),
-  );
-  private lumps = new T.InstancedMesh(
-    new T.IcosahedronGeometry(1, 1),
-    material(0x845333),
-    16,
-  );
+  private bucketSoil?: BucketSoil;
   private fallingSoil = new T.InstancedMesh(
     new T.IcosahedronGeometry(1, 1),
     material(0x795033),
@@ -105,7 +89,7 @@ export class View {
     this.scene.add(sun);
     this.terrain = new LandSurface(sim);
     this.scene.add(this.terrain);
-    for (const mesh of [this.heap, this.lumps, this.fallingSoil, this.dustMesh])
+    for (const mesh of [this.fallingSoil, this.dustMesh])
       mesh.material.map = this.terrain.material.map;
     const bladeGeometry = new T.BufferGeometry();
     bladeGeometry.setAttribute(
@@ -286,11 +270,8 @@ export class View {
       }
     });
     this.model.add(gltf.scene);
-    const fill = this.parts.get("BucketFill")!;
-    this.heap.name = "VisibleSoilHeap";
-    fill.add(this.heap, this.lumps);
-    this.heap.castShadow = true;
-    this.lumps.castShadow = true;
+    this.bucketSoil = new BucketSoil(this.terrain.material.map);
+    this.parts.get("Bucket")!.add(this.bucketSoil);
     this.hydraulics = new Hydraulics(this.scene, this.model);
     this.render(0, 0);
   }
@@ -332,32 +313,10 @@ export class View {
       const p = this.parts.get(name);
       if (p) p.rotation.x = angle;
     }
-    const fill = this.parts.get("BucketFill");
-    if (fill) {
-      fill.visible = m.load > 0.003;
-      const fraction = Math.min(1, m.load / CAPACITY);
-      this.heap.position.set(0, -0.09, 0.025);
-      this.heap.scale.set(0.32, 0.04 + fraction * 0.24, 0.25);
-      for (let i = 0; i < 16; i++) {
-        const angle = i * 2.399,
-          radial = 0.22 * Math.sqrt(i / 16);
-        this.temp.position.set(
-          Math.cos(angle) * radial,
-          -0.085 +
-            (0.04 + fraction * 0.24) * Math.sqrt(1 - (radial / 0.3) ** 2),
-          Math.sin(angle) * radial + 0.025,
-        );
-        this.temp.rotation.set(i, i * 0.7, 0);
-        const size = fraction > i / 20 ? 0.033 + (i % 3) * 0.009 : 0;
-        this.temp.scale.set(size, size * 0.45, size * 0.85);
-        this.temp.updateMatrix();
-        this.lumps.setMatrixAt(i, this.temp.matrix);
-      }
-      this.lumps.instanceMatrix.needsUpdate = true;
-    }
     const inside = this.parts.get("Interior");
     if (inside) inside.visible = !this.cab;
     this.scene.updateMatrixWorld(true);
+    this.bucketSoil?.update(this.sim, dt);
     this.hydraulics?.update();
     for (const i of this.sim.changed) this.updateCell(i);
     if (this.sim.changed.size) {
@@ -416,7 +375,8 @@ export class View {
       this.sim.height(tip.x, tip.z) + 0.035,
       tip.z,
     );
-    this.cursor.visible = !this.overview;
+    this.cursor.visible =
+      !this.overview && tip.y > this.sim.height(tip.x, tip.z) + 0.15;
     this.fallingSoil.count = this.sim.falling.length;
     this.sim.falling.forEach((p, i) => {
       this.temp.position.set(p.x, p.y, p.z);
@@ -438,21 +398,13 @@ export class View {
             (Math.random() - 0.5) * 1.2,
           ),
           life: p.dump ? 0.45 : 0.32,
-          start: p.dump ? undefined : position.clone(),
         });
       }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
-      if (p.start && fill) {
-        const t = Math.min(1, 1 - p.life / 0.32),
-          destination = fill.getWorldPosition(new T.Vector3());
-        p.position.lerpVectors(p.start, destination, t);
-        p.position.y += Math.sin(t * Math.PI) * 0.15;
-      } else {
-        p.velocity.y -= dt * 5;
-        p.position.addScaledVector(p.velocity, dt);
-      }
+      p.velocity.y -= dt * 5;
+      p.position.addScaledVector(p.velocity, dt);
       if (p.life <= 0) {
         this.particles.splice(i, 1);
       }

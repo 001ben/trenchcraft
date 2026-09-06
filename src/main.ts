@@ -38,6 +38,7 @@ $("camera").textContent = "Chase view";
 let audio: AudioContext | null = null,
   osc: OscillatorNode | null = null,
   gain: GainNode | null = null,
+  scrape: GainNode | null = null,
   sound = false,
   lastSave = 0,
   lastHud = 0,
@@ -96,6 +97,21 @@ $("start").onclick = () => {
     gain.gain.value = 0;
     osc.connect(gain).connect(audio.destination);
     osc.start();
+    const noise = audio.createBuffer(1, audio.sampleRate * 2, audio.sampleRate);
+    const samples = noise.getChannelData(0);
+    for (let i = 0; i < samples.length; i++)
+      samples[i] = (Math.random() * 2 - 1) * 0.5;
+    const source = audio.createBufferSource(),
+      filter = audio.createBiquadFilter();
+    source.buffer = noise;
+    source.loop = true;
+    filter.type = "bandpass";
+    filter.frequency.value = 520;
+    filter.Q.value = 0.65;
+    scrape = audio.createGain();
+    scrape.gain.value = 0;
+    source.connect(filter).connect(scrape).connect(audio.destination);
+    source.start();
   }
   audio.resume();
 };
@@ -218,8 +234,18 @@ function frame(now: number) {
       audio.currentTime,
       0.12,
     );
-    osc.frequency.setTargetAtTime(46 + effort * 12, audio.currentTime, 0.1);
+    osc.frequency.setTargetAtTime(
+      46 + effort * 12 - sim.resistance * 6,
+      audio.currentTime,
+      0.1,
+    );
   }
+  if (scrape && audio)
+    scrape.gain.setTargetAtTime(
+      sound && running ? Math.min(0.045, sim.cutRate * 0.9) : 0,
+      audio.currentTime,
+      0.045,
+    );
   view.render(running ? dt : 0, now / 1000);
   if (now - lastHud > 120) {
     hud();

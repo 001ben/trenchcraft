@@ -49,6 +49,14 @@ export type SoilClod = {
   vz: number;
   volume: number;
 };
+export type ScoopCut = {
+  x: number;
+  z: number;
+  top: number;
+  bottom: number;
+  across: number;
+  volume: number;
+};
 export type Save = {
   version: 2;
   machine: Machine;
@@ -122,6 +130,8 @@ export class Simulation {
   falling: SoilClod[] = [];
   private dischargeIndex = 0;
   resistance = 0;
+  cuts: ScoopCut[] = [];
+  cutRate = 0;
   changed = new Set<number>();
   dust: { x: number; y: number; z: number; dump: boolean }[] = [];
   lastAction = "Lower the boom toward the first chalk marks.";
@@ -142,32 +152,81 @@ export class Simulation {
       : 0;
   }
   /** Volume is transferred between ground and bucket; rendering never awards progress. */
-  dig(point: { x: number; y: number; z: number }, dt: number) {
-    let removed = 0;
+  dig(
+    point: { x: number; y: number; z: number },
+    dt: number,
+    advance = dt * 0.6,
+  ) {
+    if (CAPACITY - this.machine.load < 1e-8) return 0;
+    const yaw = this.machine.heading + this.machine.swing,
+      sin = Math.sin(yaw),
+      cos = Math.cos(yaw);
     const cx = Math.floor((point.x + (NX * CELL) / 2) / CELL),
       cz = Math.floor((point.z + (NZ * CELL) / 2) / CELL);
+    const candidates: {
+      i: number;
+      x: number;
+      z: number;
+      old: number;
+      depth: number;
+      across: number;
+    }[] = [];
+    let requested = 0;
     for (let row = cz - 2; row <= cz + 2; row++)
       for (let col = cx - 2; col <= cx + 2; col++) {
         if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
         const i = row * NX + col,
-          p = cellPosition(i);
-        if (Math.hypot(p.x - point.x, p.z - point.z) > 0.42) continue;
-        const old = this.ground[i];
-        const cut = Math.min(
-          Math.max(0, old - Math.max(-1.4, point.y)),
-          dt * 0.8,
-          Math.max(0, CAPACITY - this.machine.load) / (CELL * CELL),
+          p = cellPosition(i),
+          old = this.ground[i];
+        const across = (p.x - point.x) * cos - (p.z - point.z) * sin;
+        const ahead = (p.x - point.x) * sin + (p.z - point.z) * cos;
+        if (Math.abs(across) > 0.39 || Math.abs(ahead) > 0.19) continue;
+        const coverage = clamp(
+          (0.39 + CELL / 2 - Math.abs(across)) / CELL,
+          0,
+          1,
         );
-        if (cut <= 0) continue;
-        this.ground[i] = old - cut;
-        const volume = (old - this.ground[i]) * CELL * CELL;
-        this.machine.load += volume;
-        removed += volume;
-        this.deepest[i] = Math.min(this.deepest[i], this.ground[i]);
-        this.changed.add(i);
+        const depth =
+          Math.min(
+            Math.max(0, old - Math.max(-1.4, point.y)),
+            Math.max(0, dt) * 0.8,
+          ) * coverage;
+        if (depth <= 0) continue;
+        candidates.push({ i, ...p, old, depth, across });
+        requested += depth * CELL * CELL;
       }
+    if (!requested) return 0;
+    // Cut volume follows how far the lip actually swept into the bank, not time alone.
+    const penetration = Math.max(0, this.height(point.x, point.z) - point.y);
+    const budget = 0.78 * Math.max(0, advance) * penetration;
+    const fraction = Math.min(
+      1,
+      budget / requested,
+      Math.max(0, CAPACITY - this.machine.load) / requested,
+    );
+    let removed = 0;
+    for (const p of candidates) {
+      if (fraction <= 0) break;
+      this.ground[p.i] = p.old - p.depth * fraction;
+      const volume = (p.old - this.ground[p.i]) * CELL * CELL;
+      if (volume <= 0) continue;
+      this.machine.load += volume;
+      removed += volume;
+      const parcel = {
+        x: p.x,
+        z: p.z,
+        top: p.old,
+        bottom: this.ground[p.i],
+        across: p.across,
+        volume,
+      };
+      if (this.cuts.length < 64) this.cuts.push(parcel);
+      else this.cuts[this.cuts.length - 1].volume += volume;
+      this.deepest[p.i] = Math.min(this.deepest[p.i], this.ground[p.i]);
+      this.changed.add(p.i);
+    }
     if (removed > 0) {
-      this.dust.push({ ...point, dump: false });
+      this.cutRate += removed / Math.max(dt, 0.001);
       this.lastAction =
         "Lift, swing right to the spoil strip, then open the bucket.";
     }
@@ -252,7 +311,9 @@ export class Simulation {
     dt = clamp(dt, 0, 0.05);
     const m = this.machine;
     this.fall(dt);
+    const previousResistance = this.resistance;
     this.resistance = 0;
+    this.cutRate = 0;
     if (c.leftTrack || c.rightTrack) {
       // Two track levers: forward/reverse per side, independent of upper-body swing.
       const left = clamp(c.leftTrack, -1, 1),
@@ -280,14 +341,23 @@ export class Simulation {
         1,
         (Math.abs(a.boom) + Math.abs(a.stick) + Math.abs(a.curl)) * 0.65,
       );
+    const biteFlow = flow * (1 - previousResistance * 0.28);
     m.swing += a.swing * dt * 0.6;
     m.boom = clamp(
       m.boom + a.boom * dt * 0.4 * flow * (1 - (m.load / CAPACITY) * 0.15),
       -0.12,
       1.3,
     );
-    m.stick = clamp(m.stick + a.stick * dt * 0.55 * flow, -2.55, -0.3);
-    m.bucket = clamp(m.bucket + a.curl * dt * 0.95 * flow, -1.2, 1.7);
+    m.stick = clamp(
+      m.stick + a.stick * dt * 0.55 * (a.stick < 0 ? biteFlow : flow),
+      -2.55,
+      -0.3,
+    );
+    m.bucket = clamp(
+      m.bucket + a.curl * dt * 0.95 * (a.curl > 0 ? biteFlow : flow),
+      -1.2,
+      1.7,
+    );
     let tip = tooth(m);
     const previous = tooth(before);
     const inward =
@@ -299,7 +369,8 @@ export class Simulation {
       (a.curl > 0.05 || a.stick < -0.05) &&
       bucketOpening(m).y > -0.15
     )
-      this.dig(tip, dt);
+      this.dig(tip, dt, inward);
+    this.resistance = clamp(this.cutRate / 0.1, 0, 1);
     // Limit penetration through uncut ground. Curl/crowd must remove soil to advance.
     const penetration = this.height(tip.x, tip.z) - tip.y;
     if (penetration > 0.1 && tip.y < previous.y) {

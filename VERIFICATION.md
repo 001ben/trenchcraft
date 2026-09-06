@@ -1,5 +1,13 @@
 # Verification
 
+## September 6: connected scooping
+
+All 18 deterministic tests pass. The four new tests cover lip-first entry and gravity-driven rollback when curled, nonnegative volume-matched contents through loading/discharge, actual rotated cutting-width records with no decorative scoop dust, and tooth-travel-dependent removal (stationary lips remove nothing). Existing capacity, conservation, control, save and terrain tests remain passing. The in-bucket bed is 108 cells with four local relaxation sweeps per update; airborne discharge remains capped at 64 clods. Its distribution is presentation state; the authoritative load is saved unchanged and reloads into a settled bowl.
+
+`node tools/scoop-check.mjs` drives lower/curl/crowd, captures six successive close-ups, verifies actual bank contact, matches visible bed volume against every frame's load, and checks that scoop dust stays at zero. The checked sequence peaked at 115 draw calls and measured about 1.8 ms p95 desktop CPU submission. Early review caught an exaggerated intake sheet; limiting excavation to tooth travel, faster local settling and closing/tapering the soil edges corrected it. Empty, quarter-full, full and discharging views were also inspected. The real keyboard scoop/lift/swing/dump, save/reload and responsive touch checks pass.
+
+`node tools/terrain-benchmark.mjs scoop-loaded --loaded` adds a full, actively settling bucket to the earlier heavy scenario (49 edited ground cells per frame and 64 airborne clods). On the same desktop Edge host, p95 CPU submission was 1.7 ms at both 390 x 844 and 1024 x 768. The phone-sized view submitted 122 draw calls and 71,791 triangles; the tablet-sized view submitted 185 calls and 72,655 triangles. Frame-interval p95 was 4.3 ms. These are desktop browser measurements, not physical phone GPU/thermal results. The new settling work remains a bounded local approximation, not full rigid-body soil physics.
+
 ## September 6: smoother earth and more realistic machine
 
 All 14 deterministic tests pass: the existing twelve gameplay/conservation/control/save tests plus two new terrain checks. These prove that rendering does not mutate simulation heights, cell-center heights stay exact, and local normals match a complete Three.js recomputation, including plot corners. Backfill stays bare, an isolated cut uploads less than 1% of the normal buffer, and idle terrain uploads nothing. The physical browser scoop/discharge, travel, touch, save and responsive layout checks pass. Empty/partial/full bucket, side, front, cab, chase and phone screenshots were inspected. Production build passes with the existing Vite bundle-size advisory.
