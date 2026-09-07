@@ -28,8 +28,12 @@ export class Input {
       const move = (e: PointerEvent) => {
         const r = root.getBoundingClientRect(),
           radius = r.width * 0.3;
-        this.value[x] = clamp((e.clientX - r.x - r.width / 2) / radius, -1, 1);
-        this.value[y] = clamp((e.clientY - r.y - r.height / 2) / radius, -1, 1);
+        const dx = (e.clientX - r.x - r.width / 2) / radius,
+          dy = (e.clientY - r.y - r.height / 2) / radius,
+          distance = Math.hypot(dx, dy),
+          strength = clamp((distance - 0.1) / 0.9, 0, 1);
+        this.value[x] = distance ? (dx / distance) * strength : 0;
+        this.value[y] = distance ? (dy / distance) * strength : 0;
         knob.style.transform = `translate(${this.value[x] * radius}px,${this.value[y] * radius}px)`;
       };
       root.addEventListener("pointerdown", (e) => {

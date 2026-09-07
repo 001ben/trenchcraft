@@ -80,6 +80,14 @@ try {
   await page.locator("#camera").click();
   await page.waitForTimeout(600);
   assert.equal(await page.locator("#camera").innerText(), "Cab view");
+  await page.setViewportSize({ width: 960, height: 720 });
+  await page.locator("#guide").click();
+  await page.locator("#start").click();
+  assert.equal(
+    await page.locator("#camera").innerText(),
+    "Cab view",
+    "guide and resize preserve chase view",
+  );
   await page.screenshot({ path: ".local/chase.png" });
   await page.locator("#guide").click();
   await page.locator("#pattern").selectOption("Alternate");
@@ -91,7 +99,11 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.locator("#loading").waitFor({ state: "hidden" });
   assert.equal(await page.locator("#panel").isVisible(), false);
-  assert.equal(await page.locator("#camera").innerText(), "Chase view");
+  assert.equal(
+    await page.locator("#camera").innerText(),
+    "Cab view",
+    "reloading the same tab preserves chase view",
+  );
   assert.equal(await page.locator("#left-stick .north").innerText(), "Arm out");
   await page.locator("#guide").click();
   const beforeDrive = await page.evaluate(
@@ -141,6 +153,30 @@ try {
     radiusY: 5,
     force: 1,
   });
+  await mobile.locator("#guide").click();
+  const centeredBefore = await mobile.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
+  await mobile.locator("#start").click();
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [p(1, l, 1, 1), p(2, r, -1, 1)],
+  });
+  await mobile.waitForTimeout(350);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+  await mobile.locator("#guide").click();
+  const centeredAfter = await mobile.evaluate(
+    () => JSON.parse(localStorage.getItem("trenchcraft-save-v1")).machine,
+  );
+  assert.deepEqual(
+    centeredAfter,
+    centeredBefore,
+    "resting thumbs inside the dead zone must not move the machine",
+  );
+  await mobile.locator("#start").click();
   await cdp.send("Input.dispatchTouchEvent", {
     type: "touchStart",
     touchPoints: [p(1, l, 20, 0), p(2, r, 0, -20)],
@@ -192,6 +228,8 @@ try {
     { width: 844, height: 390 },
     { width: 1024, height: 768 },
     { width: 360, height: 640 },
+    { width: 320, height: 568 },
+    { width: 640, height: 360 },
   ]) {
     await mobile.setViewportSize(viewport);
     await mobile.waitForTimeout(400);
@@ -220,6 +258,38 @@ try {
             b.y + b.h <= a.y + 0.1,
           "thumb controls must not overlap",
         );
+    }
+    if (viewport.width < viewport.height && viewport.width <= 700) {
+      const leftTravel = await mobile.locator("#left-track").boundingBox();
+      const rightTravel = await mobile.locator("#right-track").boundingBox();
+      const leftStick = await mobile.locator("#left-stick").boundingBox();
+      assert.ok(
+        leftTravel.width >= 60 && rightTravel.width >= 60,
+        "travel controls have generous thumb targets",
+      );
+      assert.ok(
+        rightTravel.x - leftTravel.x - leftTravel.width >= 90,
+        "phone travel controls are separated",
+      );
+      assert.ok(
+        leftTravel.y + leftTravel.height < leftStick.y - 12,
+        "travel lever sits above its own stick",
+      );
+      const job = await mobile.locator(".job").boundingBox();
+      const bucket = await mobile.locator(".bucket-status").boundingBox();
+      const hint = await mobile.locator(".hint").boundingBox();
+      assert.ok(
+        job.y + job.height <= bucket.y,
+        "job and bucket status do not overlap on short phones",
+      );
+      assert.ok(
+        bucket.y + bucket.height <= hint.y,
+        "hint clears the status panel",
+      );
+      assert.ok(
+        hint.y + hint.height < leftTravel.y,
+        "hint clears the travel controls",
+      );
     }
     assert.equal(
       await mobile.evaluate(

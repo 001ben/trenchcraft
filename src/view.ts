@@ -38,6 +38,8 @@ export class View {
   model = new T.Group();
   cab = false;
   overview = false;
+  private lastCameraMode = "";
+  private cameraTarget = new T.Vector3();
   terrain: LandSurface;
   private grassBlades: T.InstancedMesh;
   private temp = new T.Object3D();
@@ -312,6 +314,16 @@ export class View {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
   }
+  reset(sim: Simulation) {
+    this.sim = sim;
+    this.terrain.setSimulation(sim);
+    this.particles.length = 0;
+    this.model.userData.lastPosition = undefined;
+    this.lastHeading = sim.machine.heading;
+    this.trackPhase.fill(0);
+    this.lastCameraMode = "";
+    for (let i = 0; i < sim.ground.length; i++) sim.changed.add(i);
+  }
   updateCell(i: number) {
     const p = cellPosition(i),
       h = this.sim.ground[i];
@@ -498,8 +510,15 @@ export class View {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
-    this.camera.position.lerp(eye, dt ? 1 - Math.exp(-dt * 7) : 1);
-    this.camera.lookAt(look);
+    const mode = this.overview ? "overview" : this.cab ? "cab" : "chase";
+    // Cut between cameras instead of flying through the cab and boom. While
+    // following, ease the target along with the eye so the view does not lurch.
+    const blend =
+      mode !== this.lastCameraMode || !dt ? 1 : 1 - Math.exp(-dt * 7);
+    this.camera.position.lerp(eye, blend);
+    this.cameraTarget.lerp(look, blend);
+    this.lastCameraMode = mode;
+    this.camera.lookAt(this.cameraTarget);
     this.renderer.render(this.scene, this.camera);
   }
 }

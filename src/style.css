@@ -588,7 +588,7 @@ select {
   }
 }
 /* Keep the bucket readout out of the working area on narrow screens. */
-@media (max-width: 700px) and (min-height: 601px) {
+@media (max-width: 700px) and (orientation: portrait) {
   .bucket-status {
     top: 178px;
     bottom: auto;
@@ -767,7 +767,7 @@ select {
     display: none;
   }
 }
-@media (max-width: 700px) and (min-height: 601px) {
+@media (max-width: 700px) and (orientation: portrait) {
   .bucket-status {
     top: 178px;
     left: 12px;
@@ -799,7 +799,7 @@ select {
   }
 }
 
-/* Keep each travel lever beside its own joystick on wide phones and tablets too. */
+/* Each hand owns a digging stick and a separate travel lever. */
 footer {
   --stick-size: 214px;
   --travel-gap: 12px;
@@ -834,11 +834,12 @@ footer {
 }
 @media (max-width: 700px) {
   footer {
-    --stick-size: clamp(120px, calc((100vw - 136px) / 2), 148px);
-    --travel-gap: clamp(0px, calc((100vw - 360px) / 4), 8px);
+    --stick-size: clamp(128px, calc((100vw - 72px) / 2), 148px);
+    --travel-gap: 12px;
   }
-  .track-column {
-    width: 44px;
+  .joystick {
+    width: var(--stick-size);
+    height: var(--stick-size);
   }
 }
 @media (min-width: 701px) and (max-height: 600px) {
@@ -852,4 +853,76 @@ footer {
   line-height: 1.2;
   display: grid;
   place-items: center;
+}
+
+/* Portrait phones have room above each thumb, not between the two sticks. */
+@media (max-width: 700px) and (orientation: portrait) {
+  .job {
+    top: calc(max(12px, env(safe-area-inset-top)) + 63px);
+  }
+  .bucket-status {
+    top: calc(max(12px, env(safe-area-inset-top)) + 166px);
+    left: 12px;
+    right: auto;
+    width: 210px;
+    padding: 8px 10px;
+  }
+  .joystick > span {
+    font-size: 9px;
+  }
+  .track-column {
+    bottom: calc(var(--stick-size) + 26px);
+    width: 64px;
+  }
+  .track-column:first-child {
+    left: calc((var(--stick-size) - 64px) / 2);
+  }
+  .track-column:last-child {
+    right: calc((var(--stick-size) - 64px) / 2);
+  }
+  .track-control {
+    width: 64px;
+    height: 92px;
+  }
+  .track-name {
+    font-size: 9px;
+    min-height: 22px;
+  }
+  .hint {
+    bottom: auto;
+    top: calc(max(12px, env(safe-area-inset-top)) + 213px);
+    width: calc(100% - 24px);
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  footer {
+    --stick-size: 128px;
+  }
+  .joystick {
+    width: var(--stick-size);
+    height: var(--stick-size);
+  }
+  .track-column,
+  .track-control {
+    width: 56px;
+  }
+  .track-name {
+    font-size: 9px;
+  }
+  .hint {
+    bottom: 155px;
+  }
+}
+@media (max-width: 700px) and (orientation: portrait) and (max-height: 700px) {
+  footer {
+    --stick-size: 128px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meter i,
+  .bucket-status b {
+    transition: none;
+  }
 }

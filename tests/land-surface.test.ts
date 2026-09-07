@@ -3,6 +3,30 @@ import assert from "node:assert/strict";
 import { LandSurface } from "../src/land-surface";
 import { Simulation, NX, NZ } from "../src/simulation";
 
+test("a fresh plot rebinds the visible ground and future edits to the new simulation", () => {
+  const previous = new Simulation(),
+    surface = new LandSurface(previous);
+  const cell = 27 * NX + 36,
+    vertex = (NX + 1) * (NZ + 1) + cell;
+  previous.ground[cell] = -0.8;
+  previous.deepest[cell] = -0.8;
+  surface.markCell(cell);
+  surface.flush();
+  const positions = surface.geometry.getAttribute("position");
+  assert.ok(positions.getY(vertex) < -0.7);
+  const fresh = new Simulation();
+  surface.setSimulation(fresh);
+  assert.equal(positions.getY(vertex), 0);
+  assert.equal(surface.isGrass(cell), true);
+  fresh.ground[cell] = -0.3;
+  surface.markCell(cell);
+  surface.flush();
+  assert.ok(Math.abs(positions.getY(vertex) + 0.3) < 1e-6);
+  surface.geometry.dispose();
+  surface.material.map?.dispose();
+  surface.material.dispose();
+});
+
 test("connected earth surface preserves simulation state and agrees with full normal recomputation", () => {
   const sim = new Simulation(),
     surface = new LandSurface(sim);

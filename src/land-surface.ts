@@ -37,6 +37,12 @@ export class LandSurface extends T.Mesh<
   private cross = new T.Vector3();
   private origin = new T.Vector3();
 
+  setSimulation(sim: Simulation) {
+    this.sim = sim;
+    for (let i = 0; i < NX * NZ; i++) this.markCell(i);
+    this.flush();
+  }
+
   constructor(private sim: Simulation) {
     super(
       new T.BufferGeometry(),

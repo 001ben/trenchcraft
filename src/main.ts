@@ -17,12 +17,12 @@ const app = document.querySelector<HTMLElement>("#app")!;
 const stick = (id: string, title: string, keys: string) =>
   `<section class="hand"><div class="hand-title"><span class="hand-name">${title}</span><small>${keys}</small></div><div id="${id}" class="joystick" aria-label="${title} virtual joystick"><span class="north"></span><span class="west"></span><span class="east"></span><span class="south"></span><i class="cross horizontal"></i><i class="cross vertical"></i><b class="knob"></b></div></section>`;
 const track = (id: string, label: string, keys: string) =>
-  `<div class="track-column"><div id="${id}" class="track-control" role="slider" tabindex="0" aria-label="${label.toLowerCase()} track: up forward, down reverse" aria-orientation="vertical" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Stopped"><span class="track-forward">↑</span><b class="track-knob"></b><span class="track-reverse">↓</span></div><span class="track-name">${label} TRACK</span><kbd>${keys}</kbd></div>`;
+  `<div class="track-column"><div id="${id}" class="track-control" role="slider" tabindex="0" aria-label="${label.toLowerCase()} track: up forward, down reverse" aria-orientation="vertical" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Stopped"><span class="track-forward">↑</span><b class="track-knob"></b><span class="track-reverse">↓</span></div><span class="track-name">${label}<br>TRACK</span><kbd>${keys}</kbd></div>`;
 app.innerHTML = `<canvas id="world" aria-label="Excavator practice plot"></canvas><header><div class="brand"><span class="brand-icon">▰</span><div>TRENCHCRAFT<small>A LITTLE EARTHWORK</small></div></div><nav><button id="camera">Cab view</button><button id="guide" aria-label="Open guide and pause">?</button></nav></header>
 <section class="job"><div><span class="eyebrow">01 / WILLOW LANE</span><strong>The service trench</strong></div><span id="progress">0%</span><div class="meter"><i id="progress-fill"></i></div><small id="job-details">6 m long · 60 cm deep · follow the chalk</small></section>
 <div class="hint" id="hint"></div><div class="bucket-status"><span id="load">BUCKET EMPTY</span><i><b id="load-fill"></b></i><small id="depth">Ready to dig</small></div>
 <footer>${stick("left-stick", "LEFT HAND", "W A S D")}<section class="travel-console" aria-label="Track travel levers"><div class="travel-title">TRAVEL</div><div class="travel-levers">${track("left-track", "LEFT", "Q / Z")}${track("right-track", "RIGHT", "E / C")}</div></section>${stick("right-stick", "RIGHT HAND", "ARROWS")}</footer>
-<dialog id="panel"><div class="sheet"><span class="eyebrow">A QUIET PLOT. A GOOD FIRST DIG.</span><h1>A little practice.<br>A straighter trench.</h1><p>Learn the rhythm of a mini excavator: reach, curl, lift, swing and empty. Two thumbs. Four movements on each stick.</p><ol id="lesson"><li><b>Reach & lower.</b> Push the left stick to reach out; push the right stick to lower the boom.</li><li><b>Take a bite.</b> With the teeth in the soil, pull the left stick back and move the right stick left to curl.</li><li><b>Lift & place.</b> Pull the right stick back to lift. Swing right with the left stick. Move the right stick right to empty over the amber strip.</li></ol><div class="quality"><span id="pattern-tag">ISO CONTROLS</span><strong id="stars">◇ ◇ ◇</strong><small id="quality">Follow the line. Take your time.</small></div><div class="settings"><label>Control pattern <select id="pattern"><option value="ISO">ISO · boom on right</option><option value="Alternate">Alternate · boom on left</option></select></label><button id="overview">Plot overview</button><button id="sound">Sound off</button></div><p class="note">The two round joysticks always control the arm. The two travel levers between them move the left and right tracks: push both up for forward, down for reverse, or opposite ways to turn. On keyboard, Q/Z controls the left track and E/C the right. Gamepad bumpers drive forward and triggers reverse. This is a simplified controls practice game; match the pattern to your actual machine.</p><p id="save-note" class="note"></p><button class="primary" id="start">${stored ? "Continue practice" : "Start digging"} <span>→</span></button><button class="quiet" id="reset">Start a fresh plot</button><div id="reset-confirm" hidden><p>Clear this practice plot and its saved progress?</p><button id="reset-yes">Yes, fresh plot</button><button id="reset-no">Keep my plot</button></div></div></dialog><div id="loading">Building your little excavator…</div>`;
+<dialog id="panel"><div class="sheet"><span class="eyebrow">A QUIET PLOT. A GOOD FIRST DIG.</span><h1>A little practice.<br>A straighter trench.</h1><p>Learn the rhythm of a mini excavator: reach, curl, lift, swing and empty. Two thumbs. Four movements on each stick.</p><ol id="lesson"><li><b>Reach & lower.</b> Push the left stick to reach out; push the right stick to lower the boom.</li><li><b>Take a bite.</b> With the teeth in the soil, pull the left stick back and move the right stick left to curl.</li><li><b>Lift & place.</b> Pull the right stick back to lift. Swing right with the left stick. Move the right stick right to empty over the amber strip.</li></ol><div class="quality"><span id="pattern-tag">ISO CONTROLS</span><strong id="stars">◇ ◇ ◇</strong><small id="quality">Follow the line. Take your time.</small></div><div class="settings"><label>Control pattern <select id="pattern"><option value="ISO">ISO · boom on right</option><option value="Alternate">Alternate · boom on left</option></select></label><button id="overview">Plot overview</button><button id="sound">Sound off</button></div><p class="note">The two round joysticks always control the arm. The LEFT TRACK and RIGHT TRACK levers move the tracks independently: push both up for forward, down for reverse, or opposite ways to turn. On keyboard, Q/Z controls the left track and E/C the right. Gamepad bumpers drive forward and triggers reverse. This is a simplified controls practice game; match the pattern to your actual machine.</p><p id="save-note" class="note"></p><button class="primary" id="start">${stored ? "Continue practice" : "Start digging"} <span>→</span></button><button class="quiet" id="reset">Start a fresh plot</button><div id="reset-confirm" hidden><p>Clear this practice plot and its saved progress?</p><button id="reset-yes">Yes, fresh plot</button><button id="reset-no">Keep my plot</button></div></div></dialog><div id="loading">Building your little excavator…</div>`;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const input = new Input(
@@ -34,7 +34,20 @@ const input = new Input(
   view = new View($<HTMLCanvasElement>("world"), sim),
   panel = $<HTMLDialogElement>("panel");
 view.cab = true;
-$("camera").textContent = "Chase view";
+// A new tab starts in the cab; reloading this tab preserves the chosen view.
+try {
+  view.cab = sessionStorage.getItem("trenchcraft-camera") !== "chase";
+} catch {}
+function cameraLabels() {
+  $("camera").textContent = view.cab ? "Chase view" : "Cab view";
+  $("overview").textContent = view.overview
+    ? "Follow excavator"
+    : "Plot overview";
+  try {
+    sessionStorage.setItem("trenchcraft-camera", view.cab ? "cab" : "chase");
+  } catch {}
+}
+cameraLabels();
 let audio: AudioContext | null = null,
   osc: OscillatorNode | null = null,
   gain: GainNode | null = null,
@@ -123,13 +136,11 @@ $("sound").onclick = () => {
 $("camera").onclick = () => {
   view.overview = false;
   view.cab = !view.cab;
-  $("camera").textContent = view.cab ? "Chase view" : "Cab view";
+  cameraLabels();
 };
 $("overview").onclick = () => {
   view.overview = !view.overview;
-  $("overview").textContent = view.overview
-    ? "Follow excavator"
-    : "Plot overview";
+  cameraLabels();
 };
 $("pattern").onchange = () => {
   sim.pattern = $<HTMLSelectElement>("pattern").value as "ISO" | "Alternate";
@@ -145,14 +156,12 @@ $("reset-no").onclick = () => {
 };
 $("reset-yes").onclick = () => {
   sim = new Simulation();
-  view.sim = sim;
-  for (let i = 0; i < sim.ground.length; i++) sim.changed.add(i);
+  view.reset(sim);
   completed = false;
   travelling = false;
   view.cab = true;
   view.overview = false;
-  $("camera").textContent = "Chase view";
-  $("overview").textContent = "Plot overview";
+  cameraLabels();
   labels();
   save();
   pause();
@@ -208,7 +217,7 @@ function hud() {
       ? `60 cm target · ${Math.round(s.straightness * 100)}% on line · ${Math.round(s.tidiness * 100)}% tidy`
       : "6 m long · 60 cm deep · follow the chalk";
   $("hint").textContent = travelling
-    ? "Travel levers: both ↑ to drive, both ↓ to reverse, opposite directions to turn. Release to stop."
+    ? "Both levers ↑ forward · ↓ reverse · opposite ways to turn. Release to stop."
     : sim.lastAction;
   if (s.stars === 3 && !completed) {
     completed = true;
