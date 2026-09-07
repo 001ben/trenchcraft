@@ -40,6 +40,7 @@ try {
       return {
         elapsed,
         load: sim.machine.load,
+        carried: sim.held.reduce((v, p) => v + (p.pending ? 0 : p.volume), 0),
         bed: view.bucketSoil.bed.volume,
         contact: view.bucketSoil.intake.visible,
         dust: view.dustMesh.count,
@@ -57,7 +58,10 @@ try {
     "active contact strip is visible while actually cutting",
   );
   assert.ok(frames.some((f) => f.load > 0.005));
-  assert.ok(frames.every((f) => Math.abs(f.load - f.bed) < 1e-8));
+  assert.ok(
+    frames.every((f) => Math.abs(f.carried - f.bed) < 1e-8),
+    "visible soil matches clods in the bowl, excluding cuts still on the bank",
+  );
   assert.ok(
     frames.every((f) => f.dust === 0),
     "scooping has no flying collection particles",

@@ -98,12 +98,13 @@ test("boom, arm and swing move in the operator's labelled ISO directions", () =>
     assert.ok((after[axis] - before[axis]) * sign > 0, JSON.stringify(c));
   }
 });
-test("untouched ground resists the teeth and lowering alone cannot excavate", () => {
+test("a full bucket resists downward entry into uncut ground", () => {
   const s = new Simulation();
-  for (let i = 0; i < 600; i++) s.update({ ...neutral(), ry: -1 }, 1 / 60);
+  s.machine.boom = 0.454;
+  s.machine.load = CAPACITY;
+  s.update({ ...neutral(), ry: -1 }, 0.05);
   const tip = tooth(s.machine);
   assert.ok(tip.y >= s.height(tip.x, tip.z) - 0.101);
-  assert.equal(s.machine.load, 0);
   assert.ok(s.ground.every((h) => h === 0));
   assert.ok(s.resistance > 0);
 });
@@ -142,7 +143,7 @@ test("arm controls physically scoop then empty, and neutral never digs", () => {
   const c = neutral();
   c.ry = -1;
   for (let i = 0; i < 32; i++) s.update(c, 1 / 60);
-  assert.equal(s.machine.load, 0);
+  assert.ok(s.ground.some((h) => h < 0), "lowering starts the bite");
   c.ry = 0;
   c.rx = -1;
   c.ly = 1;

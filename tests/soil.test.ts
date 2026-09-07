@@ -138,10 +138,12 @@ test("opening the bucket lets clods fall, land in the spoil and become ground", 
   run(s, { lx: 1 }, 80);
   const carried = s.machine.load;
   let peakLoose = 0;
-  for (let i = 0; i < 90; i++) {
+  // A deeper initial bite changes the curl pose; open all the way before settling.
+  for (let i = 0; i < 240 && s.machine.bucket > -1.2; i++) {
     s.update({ ...neutral(), rx: 1 }, 1 / 60);
     peakLoose = Math.max(peakLoose, s.falling.length);
   }
+  assert.equal(s.machine.bucket, -1.2, "bucket reached its fully open stop");
   assert.ok(peakLoose > 10, "clods leave the tipped bucket");
   run(s, {}, 300);
   assert.ok(s.machine.load < 0.001, `${s.machine.load} still carried`);

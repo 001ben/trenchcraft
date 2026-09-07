@@ -379,6 +379,7 @@ export class Simulation {
     point: { x: number; y: number; z: number },
     dt: number,
     advance = dt * 0.6,
+    downward = 0,
   ) {
     if (CAPACITY - this.machine.load < 1e-8) return 0;
     const yaw = this.machine.heading + this.machine.swing,
@@ -424,7 +425,9 @@ export class Simulation {
     if (!requested) return 0;
     // Cut volume follows how far the lip actually swept into the bank, not time alone.
     const penetration = contactDepth / contactWeight;
-    const budget = 0.78 * Math.max(0, advance) * penetration;
+    // Inward travel sweeps the bank depth; lowering sweeps the 0.38 m contact strip.
+    const budget =
+      0.78 * (Math.max(0, advance) * penetration + Math.max(0, downward) * 0.38);
     const fraction = Math.min(
       1,
       budget / requested,
@@ -695,14 +698,15 @@ export class Simulation {
     const inward =
       (tip.x - previous.x) * Math.sin(m.heading + m.swing) +
       (tip.z - previous.z) * Math.cos(m.heading + m.swing);
+    const downward = a.boom < -0.05 ? Math.max(0, previous.y - tip.y) : 0;
+    const crowding = a.curl > 0.05 || a.stick < -0.05;
     if (
-      inward > 1e-6 &&
-      (a.curl > 0.05 || a.stick < -0.05) &&
+      ((inward > 1e-6 && crowding) || downward > 1e-6) &&
       bucketOpening(m).y > -0.15
     )
-      this.dig(tip, dt, inward);
+      this.dig(tip, dt, crowding ? inward : 0, downward);
     this.resistance = clamp(this.cutRate / 0.1, 0, 1);
-    // Limit penetration through uncut ground. Curl/crowd must remove soil to advance.
+    // Limit penetration through uncut ground. The teeth must remove soil to advance.
     const penetration = this.height(tip.x, tip.z) - tip.y;
     if (penetration > 0.1 && tip.y < previous.y) {
       this.resistance = clamp((penetration - 0.1) * 8, 0, 1);
@@ -721,7 +725,7 @@ export class Simulation {
         m[key] = before[key] + (proposed[key] - before[key]) * lo;
       tip = tooth(m);
       this.lastAction =
-        "Teeth against the soil. Curl and draw the arm toward you to take a bite.";
+        "Soil resisting the teeth. Keep lowering, or curl and draw the arm in.";
     }
     if (dt > 0) this.soil.step(dt, pose, m);
     this.releaseTipped(dt, tip);

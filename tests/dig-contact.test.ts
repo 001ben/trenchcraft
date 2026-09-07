@@ -14,6 +14,31 @@ const volume = (sim: Simulation) =>
   sim.falling.reduce((sum, p) => sum + p.volume, 0);
 
 for (const yaw of [0, Math.PI / 2]) {
+  for (const hz of [30, 60, 120]) {
+    test(`lowering alone cuts below the initial ground stop (${yaw}, ${hz} Hz)`, () => {
+      const sim = new Simulation();
+      sim.machine.swing = yaw;
+      const before = volume(sim);
+      let cut = 0;
+      for (let i = 0; i < 3 * hz; i++) {
+        sim.update({ ...neutral(), ry: -1 }, 1 / hz);
+        cut += sim.cutRate / hz;
+      }
+      const tip = tooth(sim.machine);
+      assert.ok(tip.y < -0.25, `teeth stalled at ${tip.y} m`);
+      assert.ok(cut > 0.01, `lowering removed only ${cut} cubic metres`);
+      assert.ok(Math.abs(volume(sim) - before) < 1e-6);
+
+      sim.resetRates();
+      sim.update(neutral(), 1 / hz);
+      assert.equal(sim.cutRate, 0, "stationary teeth cannot cut");
+      sim.update({ ...neutral(), ry: 1 }, 1 / hz);
+      assert.equal(sim.cutRate, 0, "lifting out cannot cut");
+    });
+  }
+}
+
+for (const yaw of [0, Math.PI / 2]) {
   test(`outer teeth can shave a trench shoulder when the middle teeth are over air (${yaw})`, () => {
     const sim = new Simulation();
     sim.machine.swing = yaw;

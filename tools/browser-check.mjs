@@ -306,6 +306,18 @@ try {
   await mobile.locator("#reset-yes").click();
   await mobile.locator("#start").click();
   assert.match(await mobile.locator("#load").innerText(), /EMPTY/);
+  await mobile.keyboard.down("ArrowUp");
+  await mobile.waitForTimeout(2500);
+  await mobile.keyboard.up("ArrowUp");
+  await mobile.screenshot({ path: ".local/downward-dig.png" });
+  await mobile.locator("#guide").click();
+  const lowered = await mobile.evaluate(() =>
+    JSON.parse(localStorage.getItem("trenchcraft-save-v1")),
+  );
+  assert.ok(
+    Math.min(...lowered.ground) < -0.15,
+    "holding only boom-down excavates below the old 10 cm stop",
+  );
   assert.deepEqual(errors, []);
   await writeFile(
     ".local/browser-result.json",
