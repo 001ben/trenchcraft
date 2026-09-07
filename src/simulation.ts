@@ -394,7 +394,9 @@ export class Simulation {
       depth: number;
       across: number;
     }[] = [];
-    let requested = 0;
+    let requested = 0,
+      contactDepth = 0,
+      contactWeight = 0;
     for (let row = cz - 2; row <= cz + 2; row++)
       for (let col = cx - 2; col <= cx + 2; col++) {
         if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
@@ -409,18 +411,19 @@ export class Simulation {
           0,
           1,
         );
-        const depth =
-          Math.min(
-            Math.max(0, old - Math.max(-1.4, point.y)),
-            Math.max(0, dt) * 0.8,
-          ) * coverage;
+        // The centre may be over an existing trench while outer teeth still
+        // meet its shoulders. Measure contact across the entire cutting edge.
+        const penetration = Math.max(0, old - Math.max(-1.4, point.y));
+        contactDepth += penetration * coverage;
+        contactWeight += coverage;
+        const depth = Math.min(penetration, Math.max(0, dt) * 0.8) * coverage;
         if (depth <= 0) continue;
         candidates.push({ i, ...p, old, depth, across });
         requested += depth * CELL * CELL;
       }
     if (!requested) return 0;
     // Cut volume follows how far the lip actually swept into the bank, not time alone.
-    const penetration = Math.max(0, this.height(point.x, point.z) - point.y);
+    const penetration = contactDepth / contactWeight;
     const budget = 0.78 * Math.max(0, advance) * penetration;
     const fraction = Math.min(
       1,
@@ -432,7 +435,12 @@ export class Simulation {
     for (const p of candidates) {
       if (fraction <= 0) break;
       this.ground[p.i] = p.old - p.depth * fraction;
-      const volume = (p.old - this.ground[p.i]) * CELL * CELL;
+      // Float32 terrain rounding can make the last bite microscopically larger
+      // than its budget. Keep the carried volume within the physical capacity.
+      const volume = Math.min(
+        CAPACITY - this.machine.load,
+        (p.old - this.ground[p.i]) * CELL * CELL,
+      );
       if (volume <= 0) continue;
       this.machine.load += volume;
       removed += volume;
@@ -688,7 +696,6 @@ export class Simulation {
       (tip.x - previous.x) * Math.sin(m.heading + m.swing) +
       (tip.z - previous.z) * Math.cos(m.heading + m.swing);
     if (
-      tip.y < this.height(tip.x, tip.z) + 0.03 &&
       inward > 1e-6 &&
       (a.curl > 0.05 || a.stick < -0.05) &&
       bucketOpening(m).y > -0.15
