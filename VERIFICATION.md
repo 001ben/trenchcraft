@@ -1,5 +1,11 @@
 # Verification
 
+## September 8: visible depth guidance
+
+Added a floor-depth gauge with a marked 60 cm target, text for remaining depth/reached/too-deep states, and a matching amber/green/red ground ring that stays visible during contact. Readings use the current visible surface, not tooth height or historical deepest cuts. Outside the trench the gauge asks the player to move over the chalk; the small tooth-height readout is labelled separately. The target is shared with scoring; the guide's green range is 60–65 cm.
+
+All 48 tests pass. `node --import tsx tools/grade-check.mjs` checks shallow, target, too-deep and outside-trench readings with the bucket held high, plus non-overlap with the job, hint and controls at 320 px/390 px portrait, 640 px landscape and desktop. Screenshots were inspected. Portrait cards now sit side by side to keep the depth cue visible without covering the thumb controls. The whole-trench completion percentage remains separate from the depth at the ring.
+
 ## September 8: opened-bucket penetration and active soil
 
 The public Pages build was still at `2146f89`: pushing `soil-continuity` ran checks but did not deploy. The isolated hosted keyboard test reproduced the old penetration stop. The newer local model also failed with opened bucket angles −0.8 and −1.2 radians because cutting depended on the mouth facing upward. Cutting now follows tooth direction, including the downward part of a curl. Partial overlap weights both footprint axes continuously. Loose soil cannot be packed back into cells being cut during that physics step; an isolated comparison moved the opened-bucket penetration from 0.21 m to 0.77 m. Research and limits are in `DIGGING.md`.

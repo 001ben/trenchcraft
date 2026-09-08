@@ -279,11 +279,11 @@ try {
       const bucket = await mobile.locator(".bucket-status").boundingBox();
       const hint = await mobile.locator(".hint").boundingBox();
       assert.ok(
-        job.y + job.height <= bucket.y,
-        "job and bucket status do not overlap on short phones",
+        job.x + job.width <= bucket.x || job.y + job.height <= bucket.y,
+        "job and depth status do not overlap on short phones",
       );
       assert.ok(
-        bucket.y + bucket.height <= hint.y,
+        Math.max(job.y + job.height, bucket.y + bucket.height) <= hint.y,
         "hint clears the status panel",
       );
       assert.ok(

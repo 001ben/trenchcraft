@@ -48,6 +48,8 @@ Open the bucket so its teeth point into the soil, lower to penetrate, then curl 
 
 The dashed cream line marks a **6 m × 1 m** practice trench with a **0.6 m** target depth. The cutting footprint is narrower than the trench, so adjacent bites are needed. Move the tracks to reach the full length.
 
+The **Floor at marker** gauge measures the visible trench floor under the coloured ring, independently of bucket height. Amber says how many centimetres remain; green means the floor is at the 60 cm target (up to 5 cm deeper is accepted by the guide); red warns when it is deeper than 65 cm. The tick on the gauge marks 60 cm. Moving outside the chalk trench clears the target reading. The smaller **Teeth** readout still shows the cutting edge's height relative to the original ground level. “Target reached here” describes this spot, while the left-hand percentage measures the whole trench. Backfilling updates the floor reading immediately.
+
 The fenced block starts as a grassy yard with trees, shrubs and a small shed. Grass and tufts disappear at the cutting point to reveal brown soil. Backfilled cuts stay bare; a fresh-plot reset restores the lawn.
 
 Stars reward actual earthwork:

@@ -79,6 +79,8 @@ export class View {
       side: T.DoubleSide,
       transparent: true,
       opacity: 0.85,
+      depthTest: false,
+      depthWrite: false,
     }),
   );
   constructor(
@@ -425,13 +427,18 @@ export class View {
       }
     this.track.instanceMatrix.needsUpdate = true;
     const tip = tooth(m);
+    const grade = this.sim.grade(tip.x, tip.z);
+    this.cursor.material.color.setHex(
+      grade.state === "on-grade" ? 0x36d699 :
+      grade.state === "too-deep" ? 0xff7660 : 0xffd16a,
+    );
     this.cursor.position.set(
       tip.x,
-      this.sim.height(tip.x, tip.z) + 0.035,
+      this.sim.surface(tip.x, tip.z) + 0.035,
       tip.z,
     );
     this.cursor.visible =
-      !this.overview && tip.y > this.sim.height(tip.x, tip.z) + 0.15;
+      !this.overview && grade.state !== "off-line";
     let count = 0;
     for (const list of [this.sim.held, this.sim.falling])
       for (const p of list) {

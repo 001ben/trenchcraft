@@ -13,6 +13,7 @@ export const CELL = 0.25,
   NX = 72,
   NZ = 80,
   CAPACITY = 0.22;
+export const TARGET_DEPTH = 0.6;
 export const ARM = {
   boom: 2.8,
   stick: 2.3,
@@ -298,6 +299,19 @@ export class Simulation {
   surface(x: number, z: number) {
     this.surfaceTriangle(x, z, this.tri);
     return this.tri[0];
+  }
+  /** Current visible floor at the marker, independent of teeth or past excavation. */
+  grade(x: number, z: number) {
+    const depthCm = Math.max(0, Math.round(-this.surface(x, z) * 100));
+    const targetCm = Math.round(TARGET_DEPTH * 100);
+    const state = !target(x, z)
+      ? "off-line"
+      : depthCm < targetCm
+        ? "shallow"
+        : depthCm <= targetCm + 5
+          ? "on-grade"
+          : "too-deep";
+    return { depthCm, targetCm, state };
   }
   surfaceNormal(x: number, z: number, out: Float64Array) {
     this.surfaceTriangle(x, z, this.tri);
@@ -771,7 +785,7 @@ export class Simulation {
       if (target(p.x, p.z)) {
         targets++;
         onLine += cut;
-        done += Math.min(0.6, Math.max(0, -this.ground[i])) / 0.6;
+        done += Math.min(TARGET_DEPTH, Math.max(0, -this.ground[i])) / TARGET_DEPTH;
       }
       const pile = Math.max(0, this.ground[i]);
       above += pile;
