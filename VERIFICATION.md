@@ -1,5 +1,11 @@
 # Verification
 
+## September 8: opened-bucket penetration and active soil
+
+The public Pages build was still at `2146f89`: pushing `soil-continuity` ran checks but did not deploy. The isolated hosted keyboard test reproduced the old penetration stop. The newer local model also failed with opened bucket angles −0.8 and −1.2 radians because cutting depended on the mouth facing upward. Cutting now follows tooth direction, including the downward part of a curl. Partial overlap weights both footprint axes continuously. Loose soil cannot be packed back into cells being cut during that physics step; an isolated comparison moved the opened-bucket penetration from 0.21 m to 0.77 m. Research and limits are in `DIGGING.md`.
+
+All 46 deterministic tests pass, including opened-bucket penetration/crowding, rejecting back-first lowering, continuous partial contact and preventing immediate refill. Build, the existing keyboard/touch gameplay check and the scoop-rendering check pass. `node --import tsx tools/digging-check.mjs` uses a fresh browser profile with an explicitly verified −0.8 rad bucket, then drives real keyboard penetration, curl/crowd and lift while checking terrain removal and conserved soil volume. The local run reached about 0.77 m depth, advanced the teeth about 0.25 m during crowding, and lifted clear; screenshots were inspected. These prove the specific corrections, not a calibrated soil-force model or uniformly smooth motion in every pose.
+
 ## September 8: downward digging
 
 Holding only boom-down previously stopped the teeth 10 cm into untouched soil and removed no earth. Lowering now contributes a cut budget from downward tooth travel across the contact strip; bucket orientation, capacity and uncut-ground resistance still apply. Six regression cases reproduced the old stop and now pass at 30/60/120 Hz in two swing directions, with conserved volume and no cutting while stationary or lifting out. All 41 tests and the production build pass.

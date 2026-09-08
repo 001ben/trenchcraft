@@ -39,14 +39,14 @@ test("cut records are actual removed volume across the rotated bucket width, not
         1e-9,
     );
     for (const p of sim.cuts) {
-      assert.ok(Math.abs(p.across) <= 0.39);
+      assert.ok(Math.abs(p.across) <= 0.39 + CELL / 2);
       assert.ok(p.top > p.bottom);
     }
     for (let i = 0; i < sim.ground.length; i++)
       if (sim.ground[i] < 0) {
         const p = cellPosition(i),
           ahead = p.x * Math.sin(yaw) + (p.z + 3) * Math.cos(yaw);
-        assert.ok(Math.abs(ahead) <= 0.19);
+        assert.ok(Math.abs(ahead) <= 0.19 + CELL / 2);
       }
     assert.ok(
       Math.abs(

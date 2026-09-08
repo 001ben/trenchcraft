@@ -191,6 +191,7 @@ export class Simulation {
   cuts: ScoopCut[] = [];
   cutRate = 0;
   changed = new Set<number>();
+  private cuttingCells = new Set<number>();
   dust: { x: number; y: number; z: number; dump: boolean }[] = [];
   lastAction = "Lower the boom toward the first chalk marks.";
   private frame = makeFrame();
@@ -398,20 +399,26 @@ export class Simulation {
     let requested = 0,
       contactDepth = 0,
       contactWeight = 0;
-    for (let row = cz - 2; row <= cz + 2; row++)
-      for (let col = cx - 2; col <= cx + 2; col++) {
+    for (let row = cz - 3; row <= cz + 3; row++)
+      for (let col = cx - 3; col <= cx + 3; col++) {
         if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
         const i = row * NX + col,
           p = cellPosition(i),
           old = this.ground[i];
         const across = (p.x - point.x) * cos - (p.z - point.z) * sin;
         const ahead = (p.x - point.x) * sin + (p.z - point.z) * cos;
-        if (Math.abs(across) > 0.39 || Math.abs(ahead) > 0.19) continue;
-        const coverage = clamp(
+        const acrossCoverage = clamp(
           (0.39 + CELL / 2 - Math.abs(across)) / CELL,
           0,
           1,
         );
+        const alongCoverage = clamp(
+          (0.19 + CELL / 2 - Math.abs(ahead)) / CELL,
+          0,
+          1,
+        );
+        const coverage = acrossCoverage * alongCoverage;
+        if (coverage <= 0) continue;
         // The centre may be over an existing trench while outer teeth still
         // meet its shoulders. Measure contact across the entire cutting edge.
         const penetration = Math.max(0, old - Math.max(-1.4, point.y));
@@ -460,12 +467,13 @@ export class Simulation {
       else this.cuts[this.cuts.length - 1].volume += volume;
       this.deepest[p.i] = Math.min(this.deepest[p.i], this.ground[p.i]);
       this.changed.add(p.i);
+      this.cuttingCells.add(p.i);
     }
     if (removed > 0) {
       this.capture(removed, parcels);
       this.cutRate += removed / Math.max(dt, 0.001);
       this.lastAction =
-        "Lift, swing right to the spoil strip, then open the bucket.";
+        "Teeth are breaking soil. Curl and draw the arm in, then lift.";
     }
     return removed;
   }
@@ -614,6 +622,9 @@ export class Simulation {
       for (let col = cx - 1; col <= cx + 1; col++) {
         if (row < 0 || row >= NZ || col < 0 || col >= NX) continue;
         const i = row * NX + col;
+        // Disturbed soil stays dynamic in the active cut. Repacking squeezed
+        // clods into this same hole each substep makes the bank act like a wall.
+        if (this.cuttingCells.has(i)) continue;
         if (this.ground[i] + rise > 1.8) continue;
         const rank = this.ground[i] - (row === cz && col === cx ? 1e-4 : 0);
         if (rank < lowest) {
@@ -624,9 +635,10 @@ export class Simulation {
     if (best < 0) return false;
     this.ground[best] += rise;
     this.changed.add(best);
-    this.lastAction = spoil(clod.x, clod.z)
-      ? "Tidy pile. Swing back for the next bite."
-      : "Place the next load inside the amber spoil strip.";
+    if (!this.cuttingCells.size)
+      this.lastAction = spoil(clod.x, clod.z)
+        ? "Tidy pile. Swing back for the next bite."
+        : "Place the next load inside the amber spoil strip.";
     return true;
   }
   update(c: Controls, dt: number) {
@@ -637,6 +649,7 @@ export class Simulation {
     const previousResistance = this.resistance;
     this.resistance = 0;
     this.cutRate = 0;
+    this.cuttingCells.clear();
     if (c.leftTrack || c.rightTrack) {
       // Two track levers: forward/reverse per side, independent of upper-body swing.
       const left = clamp(c.leftTrack, -1, 1),
@@ -698,11 +711,17 @@ export class Simulation {
     const inward =
       (tip.x - previous.x) * Math.sin(m.heading + m.swing) +
       (tip.z - previous.z) * Math.cos(m.heading + m.swing);
-    const downward = a.boom < -0.05 ? Math.max(0, previous.y - tip.y) : 0;
+    const downward = Math.max(0, previous.y - tip.y);
     const crowding = a.curl > 0.05 || a.stick < -0.05;
+    const toothAngle = m.boom + m.stick + ARM.bucketMount - m.bucket;
+    // Teeth point along the bucket's local +z. An open mouth can face down
+    // during penetration; retention orientation must not veto a tooth-first cut.
+    const toothAdvance =
+      inward * Math.cos(toothAngle) +
+      (previous.y - tip.y) * Math.sin(toothAngle);
     if (
-      ((inward > 1e-6 && crowding) || downward > 1e-6) &&
-      bucketOpening(m).y > -0.15
+      (a.boom < -0.05 || crowding) &&
+      toothAdvance > 1e-6
     )
       this.dig(tip, dt, crowding ? inward : 0, downward);
     this.resistance = clamp(this.cutRate / 0.1, 0, 1);
@@ -725,7 +744,9 @@ export class Simulation {
         m[key] = before[key] + (proposed[key] - before[key]) * lo;
       tip = tooth(m);
       this.lastAction =
-        "Soil resisting the teeth. Keep lowering, or curl and draw the arm in.";
+        toothAdvance > 1e-6
+          ? "Soil resisting the teeth. Curl and draw the arm in to continue the scoop."
+          : "Open the bucket to point its teeth into the soil, then lower and curl.";
     }
     if (dt > 0) this.soil.step(dt, pose, m);
     this.releaseTipped(dt, tip);
